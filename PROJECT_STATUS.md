@@ -5,28 +5,43 @@
 
 ---
 
-## What Was Built Today
+## PENDING ACTION (Do This First Tomorrow!)
+
+**Run this SQL in pgAdmin to update categories:**
+1. Open pgAdmin → gims_db → Query Tool
+2. Paste and run:
+```sql
+TRUNCATE TABLE categories RESTART IDENTITY CASCADE;
+
+INSERT INTO categories (name_english, name_marathi, description, display_order, is_active) VALUES
+('Work Description', 'कामाचे सविस्तर वर्णन', 'Detailed maintenance work descriptions', 1, true),
+('Site Updates', 'साईट वरुन आपडेट घेणे', 'Updates received from various sites', 2, true),
+('Supervisor Watch', 'सुपरवायझर/टेलिकॉलर वॉच', 'Supervisor and telecaller activity tracking', 3, true),
+('Worker Updates', 'कारस्तगण साईट अपडेट', 'Updates about workers at sites', 4, true),
+('Email Responses', 'ई-मेल रिस्पॉन्स', 'Email correspondence and responses', 5, true),
+('SOS/Consultant', 'सल्लागार व घेर सेफिंग SOS', 'Emergency situations and consultant interactions', 6, true),
+('Site Visits', 'साईट व्हिजिट टीम', 'Team site visit records', 7, true),
+('Travel Records', 'ट्रेन रिकॉर्ड जाणे/येणे', 'Travel and transportation logs', 8, true),
+('Customer Communication', 'कस्टमर बोलणे', 'New and existing customer interactions', 9, true),
+('Yesterday''s Remaining Calls', 'काल चे राहिलेले कॉल', 'Follow-up calls pending from previous day', 10, true),
+('Today''s Remaining Calls', 'आज चे राहिलेले कॉल', 'Calls pending for today that need follow-up', 11, true);
+```
+3. Refresh the app to see new categories
+
+---
+
+## What Was Built
 
 ### Backend (Node.js/Express/TypeScript)
 Location: `backend/`
 
 **Completed:**
 - Express server with TypeScript
-- PostgreSQL database connection with connection pool
-- Redis connection for Bull queues
+- PostgreSQL database connection
 - JWT authentication with refresh tokens
-- Complete REST API routes:
-  - `/api/auth` - Login, logout, refresh token, profile
-  - `/api/tasks` - CRUD operations, filtering, pagination
-  - `/api/dashboard` - Stats, category breakdown, recent tasks
-  - `/api/reports` - PDF and Excel report generation
-  - `/api/reminders` - Reminder management
-  - `/api/users` - User management (admin only)
-- Database migrations (`migrations/001_initial_schema.sql`)
-- Seed data for 11 categories (`seeds/001_categories.sql`)
-- Error handling middleware
-- Request validation with Zod
-- Winston logger
+- REST API routes for all features
+- Database migrations and seeds
+- Error handling and logging
 
 **API runs on:** `http://localhost:3001`
 
@@ -34,175 +49,108 @@ Location: `backend/`
 Location: `frontend/`
 
 **Completed:**
-- Vite + React + TypeScript setup
-- Tailwind CSS v3 with custom primary color palette
-- React Router for navigation
-- React Query for data fetching
-- Axios with auto-unwrap interceptor for API responses
-- Authentication context with JWT handling
-- Protected routes
-
-**Pages Built:**
-1. `Login.tsx` - Authentication page
-2. `Dashboard.tsx` - Stats cards, category breakdown, recent tasks chart
-3. `Tasks.tsx` - Task list with filters, search, pagination
-4. `TaskForm.tsx` - Create/edit task form
-5. `Reports.tsx` - Generate PDF/Excel reports with date filters
-6. `Reminders.tsx` - View and manage reminders
-7. `Users.tsx` - User management (admin only)
-8. `Settings.tsx` - System settings page
-
-**Layout Components:**
-- `Layout.tsx` - Main layout wrapper
-- `Sidebar.tsx` - Navigation sidebar
-- `Header.tsx` - Top header with user menu
+- Vite + React + TypeScript
+- Tailwind CSS v3
+- React Router, React Query
+- All pages: Dashboard, Tasks, Reports, Reminders, Users, Settings
+- Login/logout with JWT
 
 **Frontend runs on:** `http://localhost:5173` (or next available port)
 
 ---
 
-## Database Schema
+## Today's Changes (Jan 21, 2026)
 
-Tables created:
-- `users` - User accounts (admin, supervisor roles)
-- `categories` - 11 task categories (Marathi/English)
-- `task_registry` - Main task records with JSONB data
-- `voice_messages` - Voice message metadata
-- `reminders` - Scheduled reminders
-- `audit_log` - Change tracking
+1. **Database Setup** - PostgreSQL connected and working
+2. **Login Working** - Admin user: phone `9999999999`, password `admin123`
+3. **Dashboard Fixes:**
+   - Fixed API endpoint URLs (category-breakdown, recent-tasks)
+   - Fixed stats property names (in_progress vs inProgress)
+   - Improved Recent Tasks display (shows category, description, input mode)
+   - Grayed out categories with 0 tasks
+4. **New Categories** - Updated to business-specific categories (pending DB update)
 
 ---
 
-## Configuration Files
+## 11 Task Categories
 
-### Environment Variables
-- `backend/.env.example` - Backend environment template
-- Copy to `backend/.env` and fill in:
-  - `DATABASE_URL` - PostgreSQL connection string
-  - `REDIS_URL` - Redis connection string
-  - `JWT_SECRET` - Secret for JWT tokens
-  - `GEMINI_API_KEY` - Google Gemini API key (for voice transcription)
+| # | English | Marathi |
+|---|---------|---------|
+| 1 | Work Description | कामाचे सविस्तर वर्णन |
+| 2 | Site Updates | साईट वरुन आपडेट घेणे |
+| 3 | Supervisor Watch | सुपरवायझर/टेलिकॉलर वॉच |
+| 4 | Worker Updates | कारस्तगण साईट अपडेट |
+| 5 | Email Responses | ई-मेल रिस्पॉन्स |
+| 6 | SOS/Consultant | सल्लागार व घेर सेफिंग SOS |
+| 7 | Site Visits | साईट व्हिजिट टीम |
+| 8 | Travel Records | ट्रेन रिकॉर्ड जाणे/येणे |
+| 9 | Customer Communication | कस्टमर बोलणे |
+| 10 | Yesterday's Remaining Calls | काल चे राहिलेले कॉल |
+| 11 | Today's Remaining Calls | आज चे राहिलेले कॉल |
 
-### Key Config Files
-- `backend/tsconfig.json` - TypeScript config
-- `frontend/vite.config.ts` - Vite config
-- `frontend/tailwind.config.js` - Tailwind with custom colors
-- `frontend/postcss.config.js` - PostCSS for Tailwind
+---
+
+## Project Phases Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1: Backend Setup | Node.js/Express/TypeScript API | ✅ Done |
+| Phase 2: Database | PostgreSQL schema, migrations | ✅ Done |
+| Phase 3: Authentication | JWT login, refresh tokens | ✅ Done |
+| Phase 4: Frontend Dashboard | React/Vite UI, all pages | ✅ Done |
+| Phase 5: Task Management | CRUD, filters, pagination | ✅ Done |
+| Phase 6: WhatsApp Integration | Webhook, messaging | ❌ Not Started |
+| Phase 7: Voice Processing | Gemini AI transcription | ❌ Not Started |
+| Phase 8: Reports | PDF/Excel generation | ⚠️ UI Only |
+| Phase 9: Reminders | Scheduled notifications | ⚠️ UI Only |
+| Phase 10: Bull Queues | Async processing | ❌ Not Started |
 
 ---
 
 ## How to Run
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 14+
-- Redis (optional, for queues)
-
-### Backend
+### Start Backend
 ```bash
-cd backend
-npm install
-# Copy .env.example to .env and configure
+cd C:\Projects\GIMS_v2\backend
 npm run dev
 ```
 
-### Frontend
+### Start Frontend
 ```bash
-cd frontend
-npm install
+cd C:\Projects\GIMS_v2\frontend
 npm run dev
 ```
 
-### Database Setup
-```bash
-# Connect to PostgreSQL and run:
-psql -U postgres -f backend/migrations/001_initial_schema.sql
-psql -U postgres -f backend/seeds/001_categories.sql
-```
+### Login Credentials
+- Phone: `9999999999`
+- Password: `admin123`
 
 ---
 
-## Issues Fixed Today
+## What's Next (Priority Order)
 
-1. **Tailwind v4 compatibility** - Downgraded to v3 for `@apply` directive support
-2. **Axios type imports** - Changed to `import type` for type-only imports
-3. **CORS errors** - Set `origin: true` in backend for development
-4. **API response unwrapping** - Added axios interceptor to auto-unwrap `{success, data}` responses
-5. **Login redirect** - Fixed response data extraction
-
----
-
-## What's Next (TODO)
-
-### High Priority
-1. [ ] Set up PostgreSQL database and run migrations
-2. [ ] Configure `.env` file with real credentials
-3. [ ] Test full login flow with database
-4. [ ] Implement WhatsApp webhook integration
-5. [ ] Implement Gemini AI for voice transcription
-
-### Medium Priority
-6. [ ] Add real-time notifications
-7. [ ] Implement report generation (PDF/Excel)
-8. [ ] Add voice message upload and processing
-9. [ ] Implement reminder scheduling with Bull queues
-10. [ ] Add dashboard charts with real data
-
-### Lower Priority
-11. [ ] Add unit tests
-12. [ ] Add E2E tests
-13. [ ] Docker setup for deployment
-14. [ ] CI/CD pipeline
+1. **[PENDING]** Run SQL to update categories in database
+2. **WhatsApp Integration** - Core feature for receiving tasks
+3. **Gemini AI Voice Transcription** - Convert Marathi voice to text
+4. **Real Report Generation** - PDF/Excel export
+5. **Reminder System** - Scheduled WhatsApp notifications
 
 ---
 
 ## Git Info
 
 - **Branch:** main
-- **Last Commit:** Initial commit: GIMS Task Registry System
 - **Remote:** https://github.com/Prasad-P25/gims.git
-- **Author:** Prasad-P25 <prasad.a.palekar@gmail.com>
+- **Last Commit:** `84c6fd7` - Update categories and improve dashboard UI
 
 ---
 
-## Project Structure
+## Quick Reference
 
-```
-GIMS_v2/
-├── backend/
-│   ├── src/
-│   │   ├── config/        # Database, Redis, env config
-│   │   ├── controllers/   # Route handlers
-│   │   ├── middlewares/   # Auth, error handling
-│   │   ├── models/        # Database models
-│   │   ├── routes/        # API routes
-│   │   ├── services/      # Business logic
-│   │   ├── types/         # TypeScript interfaces
-│   │   ├── utils/         # Logger, helpers
-│   │   ├── app.ts         # Express app
-│   │   └── server.ts      # Entry point
-│   ├── migrations/        # SQL migrations
-│   └── seeds/             # Seed data
-├── frontend/
-│   ├── src/
-│   │   ├── components/    # Reusable components
-│   │   ├── contexts/      # React contexts
-│   │   ├── pages/         # Page components
-│   │   ├── services/      # API service functions
-│   │   ├── types/         # TypeScript types
-│   │   ├── App.tsx        # Main app with routes
-│   │   └── main.tsx       # Entry point
-│   └── index.html
-└── PROJECT_STATUS.md      # This file
-```
-
----
-
-## Quick Start Tomorrow
-
-1. Open terminal in `C:\Projects\GIMS_v2`
-2. Start backend: `cd backend && npm run dev`
-3. Start frontend: `cd frontend && npm run dev`
-4. Open browser: `http://localhost:5173`
-
-**Next logical step:** Set up PostgreSQL database and run the migrations to enable real data persistence.
+| Item | Value |
+|------|-------|
+| Frontend URL | http://localhost:5173 |
+| Backend URL | http://localhost:3001 |
+| Database | gims_db on PostgreSQL 18 |
+| Admin Phone | 9999999999 |
+| Admin Password | admin123 |
