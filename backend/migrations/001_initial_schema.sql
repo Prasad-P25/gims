@@ -1,6 +1,7 @@
 -- GIMS Task Registry System - Initial Schema
 -- Migration: 001_initial_schema.sql
--- Description: Creates all base tables for the GIMS application
+-- Description: 
+tables for the GIMS application
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
