@@ -15,12 +15,12 @@ export const dashboardService = {
   },
 
   async getCategoryStats(): Promise<CategoryStat[]> {
-    const response = await api.get('/dashboard/category-stats');
+    const response = await api.get('/dashboard/category-breakdown');
     return response.data.categories || [];
   },
 
   async getRecentTasks(limit = 10): Promise<Task[]> {
-    const response = await api.get(`/dashboard/recent?limit=${limit}`);
+    const response = await api.get(`/dashboard/recent-tasks?limit=${limit}`);
     return response.data.tasks || [];
   },
 

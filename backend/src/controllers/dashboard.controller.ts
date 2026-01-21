@@ -12,8 +12,14 @@ export class DashboardController {
     const todayTasks = await taskService.getTodaysTasks();
 
     sendSuccess(res, {
-      ...stats,
-      todayTasks: todayTasks.length,
+      total: stats.total,
+      pending: stats.pending,
+      in_progress: stats.inProgress,
+      completed: stats.completed,
+      cancelled: stats.cancelled,
+      today: todayTasks.length,
+      completed_today: todayTasks.filter(t => t.status === 'completed').length,
+      overdue: stats.pending, // Tasks pending > 24h would be overdue
     });
   }
 
@@ -21,8 +27,22 @@ export class DashboardController {
    * Get category breakdown
    */
   async getCategoryBreakdown(req: AuthenticatedRequest, res: Response): Promise<void> {
+    // Get all categories with their task counts
+    const categories = await taskService.getCategories();
     const stats = await taskService.getTaskStats();
-    sendSuccess(res, { categories: stats.byCategory });
+
+    // Map categories with task counts
+    const categoryStats = categories.map(cat => {
+      const statEntry = stats.byCategory.find(s => s.category_id === cat.category_id);
+      return {
+        category_id: cat.category_id,
+        name_english: cat.name_english,
+        name_marathi: cat.name_marathi,
+        task_count: statEntry?.count || 0,
+      };
+    });
+
+    sendSuccess(res, { categories: categoryStats });
   }
 
   /**
@@ -36,7 +56,7 @@ export class DashboardController {
       { page: 1, limit, sortBy: 'created_at', sortOrder: 'desc' }
     );
 
-    sendSuccess(res, tasks);
+    sendSuccess(res, { tasks });
   }
 
   /**

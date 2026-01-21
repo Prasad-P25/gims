@@ -6,6 +6,9 @@ import {
   AlertCircle,
   TrendingUp,
   Calendar,
+  Folder,
+  Mic,
+  MessageSquare,
 } from 'lucide-react';
 import { dashboardService } from '../services/dashboard';
 import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel } from '../lib/utils';
@@ -109,34 +112,55 @@ export default function Dashboard() {
             </div>
           ) : categoryStats && categoryStats.length > 0 ? (
             <div className="space-y-3">
-              {categoryStats.map((cat) => (
-                <div key={cat.category_id} className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {cat.name_english}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {cat.name_marathi}
-                    </p>
-                  </div>
-                  <div className="ml-4 flex items-center">
-                    <div className="w-24 bg-gray-200 rounded-full h-2 mr-3">
-                      <div
-                        className="bg-primary-600 h-2 rounded-full"
-                        style={{
-                          width: `${Math.min(
-                            (cat.task_count / (stats?.total || 1)) * 100,
-                            100
-                          )}%`,
-                        }}
-                      />
+              {categoryStats.map((cat) => {
+                const hasNoTasks = cat.task_count === 0;
+                return (
+                  <div
+                    key={cat.category_id}
+                    className={cn(
+                      "flex items-center justify-between transition-opacity",
+                      hasNoTasks && "opacity-40"
+                    )}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className={cn(
+                        "text-sm font-medium truncate",
+                        hasNoTasks ? "text-gray-400" : "text-gray-900"
+                      )}>
+                        {cat.name_english}
+                      </p>
+                      <p className={cn(
+                        "text-xs truncate",
+                        hasNoTasks ? "text-gray-300" : "text-gray-500"
+                      )}>
+                        {cat.name_marathi}
+                      </p>
                     </div>
-                    <span className="text-sm font-semibold text-gray-700 w-8 text-right">
-                      {cat.task_count}
-                    </span>
+                    <div className="ml-4 flex items-center">
+                      <div className={cn(
+                        "w-24 rounded-full h-2 mr-3",
+                        hasNoTasks ? "bg-gray-100" : "bg-gray-200"
+                      )}>
+                        <div
+                          className="bg-primary-600 h-2 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(
+                              (cat.task_count / (stats?.total || 1)) * 100,
+                              100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      <span className={cn(
+                        "text-sm font-semibold w-8 text-right",
+                        hasNoTasks ? "text-gray-300" : "text-gray-700"
+                      )}>
+                        {cat.task_count}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-center text-gray-500 py-8">No category data available</p>
@@ -157,26 +181,54 @@ export default function Dashboard() {
               {recentTasks.map((task) => (
                 <div
                   key={task.registry_id}
-                  className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border-l-4 border-primary-500"
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {task.task_data?.title || task.task_data?.subject || 'Untitled Task'}
-                    </p>
-                    <div className="flex items-center mt-1 space-x-2">
-                      <Calendar className="h-3 w-3 text-gray-400" />
-                      <span className="text-xs text-gray-500">
-                        {formatDate(task.registration_date)}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {task.task_data?.title || task.task_data?.subject || task.task_data?.description?.slice(0, 50) || 'Untitled Task'}
+                      </p>
+
+                      {/* Category */}
+                      <div className="flex items-center mt-1.5 space-x-1.5">
+                        <Folder className="h-3.5 w-3.5 text-primary-500" />
+                        <span className="text-xs font-medium text-primary-600">
+                          {task.category_name_english || 'General'}
+                        </span>
+                      </div>
+
+                      {/* Description snippet */}
+                      {task.task_data?.description && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                          {task.task_data.description}
+                        </p>
+                      )}
+
+                      {/* Meta info */}
+                      <div className="flex items-center mt-2 space-x-3 text-xs text-gray-400">
+                        <div className="flex items-center space-x-1">
+                          <Calendar className="h-3 w-3" />
+                          <span>{formatDate(task.registration_date)}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {task.input_mode === 'voice' ? (
+                            <Mic className="h-3 w-3 text-orange-400" />
+                          ) : (
+                            <MessageSquare className="h-3 w-3 text-blue-400" />
+                          )}
+                          <span className="capitalize">{task.input_mode || 'text'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ml-3 flex flex-col items-end space-y-1.5">
+                      <span className={cn('badge', getStatusColor(task.status))}>
+                        {getStatusLabel(task.status)}
+                      </span>
+                      <span className={cn('badge', getPriorityColor(task.priority))}>
+                        {getPriorityLabel(task.priority)}
                       </span>
                     </div>
-                  </div>
-                  <div className="ml-4 flex flex-col items-end space-y-1">
-                    <span className={cn('badge', getStatusColor(task.status))}>
-                      {getStatusLabel(task.status)}
-                    </span>
-                    <span className={cn('badge', getPriorityColor(task.priority))}>
-                      {getPriorityLabel(task.priority)}
-                    </span>
                   </div>
                 </div>
               ))}
