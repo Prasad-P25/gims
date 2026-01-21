@@ -172,7 +172,7 @@ VALUES (
     'System Admin',
     '9999999999',
     'admin@gims.gov.in',
-    '$2a$10$rQnM1rBxl7z.zVn8YH1Rn.KPrX5E5H5H5H5H5H5H5H5H5H5H5H5H5H',  -- Replace with actual bcrypt hash
+    '$2a$10$97N6.zTU8dgICAefrVYLueDLCXfAx955FeXYKiPJ77JdMrdoEVsAi',
     'admin',
     'english',
     true
