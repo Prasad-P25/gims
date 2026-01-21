@@ -1,0 +1,62 @@
+import { Router } from 'express';
+import { validateBody } from '../middlewares/validate.middleware';
+import { loginSchema, refreshTokenSchema, userCreateSchema } from '../utils/validators';
+import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { asyncHandler } from '../middlewares/error.middleware';
+import { authController } from '../controllers/auth.controller';
+import { AuthenticatedRequest } from '../types';
+
+const router = Router();
+
+// POST /api/auth/login - User login
+router.post(
+  '/login',
+  validateBody(loginSchema),
+  asyncHandler((req, res) => authController.login(req, res))
+);
+
+// POST /api/auth/refresh - Refresh access token
+router.post(
+  '/refresh',
+  validateBody(refreshTokenSchema),
+  asyncHandler((req, res) => authController.refreshToken(req, res))
+);
+
+// POST /api/auth/logout - User logout
+router.post(
+  '/logout',
+  authenticate,
+  asyncHandler((req, res) => authController.logout(req as AuthenticatedRequest, res))
+);
+
+// POST /api/auth/register - Register new user (admin only)
+router.post(
+  '/register',
+  authenticate,
+  authorize('admin'),
+  validateBody(userCreateSchema),
+  asyncHandler((req, res) => authController.register(req, res))
+);
+
+// GET /api/auth/me - Get current user profile
+router.get(
+  '/me',
+  authenticate,
+  asyncHandler((req, res) => authController.getProfile(req as AuthenticatedRequest, res))
+);
+
+// PUT /api/auth/me - Update current user profile
+router.put(
+  '/me',
+  authenticate,
+  asyncHandler((req, res) => authController.updateProfile(req as AuthenticatedRequest, res))
+);
+
+// POST /api/auth/change-password - Change password
+router.post(
+  '/change-password',
+  authenticate,
+  asyncHandler((req, res) => authController.changePassword(req as AuthenticatedRequest, res))
+);
+
+export default router;
