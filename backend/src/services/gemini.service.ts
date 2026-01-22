@@ -108,24 +108,35 @@ ${categoryList}
 
 Instructions:
 1. Identify which category this task belongs to (or null if unclear)
-2. Extract all relevant details mentioned (names, locations, amounts, dates, etc.)
-3. Create a brief summary in the same language as input
-4. Assess priority based on urgency indicators (emergency = high, regular = medium, low-priority = low)
-5. Provide confidence score for your extraction
+2. Create a clear, concise TITLE (max 50 chars) that describes the task - this is the most important field
+3. Create a detailed DESCRIPTION of the task/issue
+4. Extract all relevant details mentioned (names, locations, amounts, dates, etc.)
+5. Create a brief summary in the same language as input
+6. Assess priority based on urgency indicators (emergency = high, regular = medium, low-priority = low)
+7. Provide confidence score for your extraction
+
+IMPORTANT: The "title" field MUST be a short, clear title like:
+- "Road repair needed at Main Street"
+- "Water supply complaint - Ward 5"
+- "Submit monthly report"
+- "Electricity pole fallen"
 
 Common Marathi urgency indicators:
-- High: तातडीने, लगेच, आपत्कालीन, महत्त्वाचे
-- Medium: शक्य तितक्या लवकर, साधारण
-- Low: वेळ मिळेल तेव्हा, काही घाई नाही
+- High: तातडीने, लगेच, आपत्कालीन, महत्त्वाचे, urgent, emergency, asap
+- Medium: शक्य तितक्या लवकर, साधारण, normal
+- Low: वेळ मिळेल तेव्हा, काही घाई नाही, whenever possible
 
 Respond in JSON format:
 {
   "category_id": <number or null>,
   "task_data": {
+    "title": "SHORT CLEAR TITLE HERE (max 50 chars) - REQUIRED",
+    "description": "detailed description of the task/issue",
     "location": "extracted location if any",
-    "person_name": "extracted name if any",
-    "issue_description": "main issue/request",
-    "additional_details": "any other details"
+    "applicant_name": "extracted person name if any",
+    "applicant_phone": "extracted phone number if any",
+    "due_date": "extracted due date if mentioned (YYYY-MM-DD format)",
+    "additional_details": "any other relevant details"
   },
   "summary": "brief summary in original language",
   "priority": "high|medium|low",

@@ -4,10 +4,41 @@ import fs from 'fs';
 import { bullRedisConfig } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { query } from '../config/database';
 import { whatsappService } from '../services/whatsapp.service';
 import { geminiService } from '../services/gemini.service';
 import { taskService } from '../services/task.service';
 import { WhatsAppMessage } from '../types';
+
+// Helper function to get user by phone or return default admin
+async function getUserIdByPhone(phone: string): Promise<string> {
+  // First try to find user by phone
+  const userResult = await query(
+    'SELECT user_id FROM users WHERE phone = $1 AND deleted_at IS NULL',
+    [phone.replace(/^91/, '')] // Remove country code for lookup
+  );
+
+  if (userResult.rows[0]) {
+    return userResult.rows[0].user_id;
+  }
+
+  // If not found, return admin user (9999999999)
+  const adminResult = await query(
+    'SELECT user_id FROM users WHERE phone = $1 AND deleted_at IS NULL',
+    ['9999999999']
+  );
+
+  if (adminResult.rows[0]) {
+    return adminResult.rows[0].user_id;
+  }
+
+  // Fallback - get any active user
+  const anyUser = await query(
+    'SELECT user_id FROM users WHERE is_active = true AND deleted_at IS NULL LIMIT 1'
+  );
+
+  return anyUser.rows[0]?.user_id || '';
+}
 
 interface MessageJobData {
   message: WhatsAppMessage;
@@ -146,8 +177,8 @@ async function processTextMessage(
   const extracted = await geminiService.extractTaskData(text, categories, 'marathi');
 
   if (extracted.confidence > 0.7 && extracted.category_id) {
-    // Create task
-    // Note: In production, you'd look up or create the user first
+    // Create task with actual user lookup
+    const userId = await getUserIdByPhone(from);
     const task = await taskService.createTask(
       {
         category_id: extracted.category_id,
@@ -157,7 +188,7 @@ async function processTextMessage(
         original_input: text,
         priority: extracted.priority,
       },
-      'system-user' // Replace with actual user lookup
+      userId
     );
 
     const category = await taskService.getCategoryById(extracted.category_id);
@@ -248,7 +279,8 @@ voiceQueue.process(async (job: Job<VoiceProcessJobData>) => {
     );
 
     if (extracted.confidence > 0.6 && extracted.category_id) {
-      // Create task
+      // Create task with actual user lookup
+      const userId = await getUserIdByPhone(from);
       const task = await taskService.createTask(
         {
           category_id: extracted.category_id,
@@ -258,7 +290,7 @@ voiceQueue.process(async (job: Job<VoiceProcessJobData>) => {
           transcription: transcription.text,
           priority: extracted.priority,
         },
-        'system-user' // Replace with actual user lookup
+        userId
       );
 
       // Save voice message record

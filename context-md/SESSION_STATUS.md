@@ -1,6 +1,6 @@
 # GIMS Project - Session Status
 
-**Last Updated:** 2026-01-22 (3:15 AM IST)
+**Last Updated:** 2026-01-22 (7:30 PM IST)
 
 ---
 
@@ -19,10 +19,11 @@
 - **Verify Token:** gims_webhook_verify_2024
 - **Access Token:** Configured (expires every 24 hours - regenerate from Meta dashboard)
 
-### Ngrok
-- **Auth Token:** Configured in `C:\Users\prasa\AppData\Local\ngrok\ngrok.yml`
-- **Command:** `npx ngrok http 3001`
-- **Note:** Free tier has browser warning page that blocks Meta webhook delivery
+### Cloudflare Tunnel (Replaced ngrok)
+- **Install:** `winget install Cloudflare.cloudflared`
+- **Command:** `"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:3001`
+- **Benefit:** No browser warning page - real WhatsApp messages reach backend directly
+- **Note:** Quick tunnels give random URLs each time. For persistent URL, create a named tunnel with Cloudflare account
 
 ---
 
@@ -47,17 +48,12 @@
 
 ## Known Issues / Pending
 
-### 1. Ngrok Free Tier Limitation
-- **Problem:** Real WhatsApp messages don't reach backend (ngrok shows browser warning page)
-- **Workaround:** Meta "Test" button works for testing
-- **Solution:** Use Cloudflare Tunnel (free, no warning) or upgrade ngrok
-
-### 2. WhatsApp Access Token
+### 1. WhatsApp Access Token
 - **Problem:** Temporary tokens expire in 24 hours
 - **Solution:** Regenerate from Meta Dashboard > WhatsApp > API Setup > Generate new token
 - **Permanent Fix:** Create System User in Meta Business Settings for permanent token
 
-### 3. "Failed to send text message" Error
+### 2. "Failed to send text message" Error
 - **Cause:** Meta test payload has no real recipient phone number
 - **Not a bug:** Will work with real WhatsApp messages
 
@@ -70,8 +66,9 @@
 cd backend
 npm run dev
 
-# Terminal 2: Start Ngrok
-npx ngrok http 3001
+# Terminal 2: Start Cloudflare Tunnel
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:3001
+# Copy the https://xxx.trycloudflare.com URL and update Meta webhook
 
 # Terminal 3: Start Frontend (optional)
 cd frontend
@@ -82,10 +79,11 @@ npm run dev
 
 ## Next Steps
 
-1. **Fix Webhook Delivery** - Switch from ngrok to Cloudflare Tunnel
-2. **Test Real Messages** - Send actual WhatsApp message and verify full flow
-3. **Set Up Frontend** - Test dashboard UI
-4. **Generate Permanent Token** - Create System User for long-lived access token
+1. ~~**Fix Webhook Delivery** - Switch from ngrok to Cloudflare Tunnel~~ **DONE**
+2. **Update Meta Webhook URL** - Set callback URL to new Cloudflare tunnel URL + `/api/webhooks/whatsapp`
+3. **Test Real Messages** - Send actual WhatsApp message and verify full flow
+4. **Set Up Frontend** - Test dashboard UI
+5. **Generate Permanent Token** - Create System User for long-lived access token
 
 ---
 
@@ -95,7 +93,7 @@ npm run dev
 - **WhatsApp API Setup:** Meta Dashboard > Your App > WhatsApp > API Setup
 - **Redis Cloud Dashboard:** https://app.redislabs.com/
 - **Gemini API Keys:** https://aistudio.google.com/app/apikey
-- **Ngrok Dashboard:** https://dashboard.ngrok.com/
+- **Cloudflare Tunnel Docs:** https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/
 
 ---
 
