@@ -317,6 +317,75 @@ export class TaskService {
   }
 
   /**
+   * Get tasks by status
+   */
+  async getTasksByStatus(status: string, limit: number = 10): Promise<TaskRegistry[]> {
+    const sql = `
+      SELECT tr.*, c.name_english, c.name_marathi
+      FROM task_registry tr
+      JOIN categories c ON tr.category_id = c.category_id
+      WHERE tr.status = $1
+        AND tr.deleted_at IS NULL
+      ORDER BY
+        CASE tr.priority
+          WHEN 'high' THEN 1
+          WHEN 'medium' THEN 2
+          WHEN 'low' THEN 3
+        END,
+        tr.created_at DESC
+      LIMIT $2
+    `;
+    const result = await query<TaskRegistry>(sql, [status, limit]);
+    return result.rows;
+  }
+
+  /**
+   * Get today's tasks
+   */
+  async getTodayTasks(): Promise<TaskRegistry[]> {
+    const sql = `
+      SELECT tr.*, c.name_english, c.name_marathi
+      FROM task_registry tr
+      JOIN categories c ON tr.category_id = c.category_id
+      WHERE DATE(tr.created_at) = CURRENT_DATE
+        AND tr.deleted_at IS NULL
+      ORDER BY
+        CASE tr.priority
+          WHEN 'high' THEN 1
+          WHEN 'medium' THEN 2
+          WHEN 'low' THEN 3
+        END,
+        tr.created_at DESC
+    `;
+    const result = await query<TaskRegistry>(sql);
+    return result.rows;
+  }
+
+  /**
+   * Get all tasks summary (for bot status command)
+   */
+  async getAllTasksSummary(): Promise<{
+    pending: TaskRegistry[];
+    inProgress: TaskRegistry[];
+    completed: TaskRegistry[];
+    todayCount: number;
+  }> {
+    const [pending, inProgress, completed, todayTasks] = await Promise.all([
+      this.getTasksByStatus('pending', 5),
+      this.getTasksByStatus('in_progress', 5),
+      this.getTasksByStatus('completed', 5),
+      this.getTodayTasks(),
+    ]);
+
+    return {
+      pending,
+      inProgress,
+      completed,
+      todayCount: todayTasks.length,
+    };
+  }
+
+  /**
    * Get task statistics
    */
   async getTaskStats(

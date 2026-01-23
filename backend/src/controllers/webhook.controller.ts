@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { addMessageJob } from '../queues/message.queue';
+import { addTelegramMessageJob } from '../queues/telegram.queue';
+import { telegramService, TelegramUpdate } from '../services/telegram.service';
 import { WhatsAppWebhookPayload } from '../types';
 
 export class WebhookController {
@@ -87,6 +89,68 @@ export class WebhookController {
 
     logger.info('Test webhook received', { body: req.body });
     res.json({ received: true, body: req.body });
+  }
+
+  /**
+   * Handle incoming Telegram webhook (POST)
+   */
+  async handleTelegramWebhook(req: Request, res: Response): Promise<void> {
+    // Always respond 200 immediately
+    res.sendStatus(200);
+
+    const update = req.body as TelegramUpdate;
+
+    logger.info('Telegram webhook received', { updateId: update.update_id });
+
+    // Handle message updates
+    if (update.message) {
+      logger.info('Telegram message received', {
+        chatId: update.message.chat.id,
+        from: update.message.from?.username || update.message.from?.first_name,
+        type: update.message.text ? 'text' : update.message.voice ? 'voice' : 'other',
+      });
+
+      // Queue for async processing
+      await addTelegramMessageJob({
+        message: update.message,
+      });
+    }
+  }
+
+  /**
+   * Setup Telegram webhook
+   */
+  async setupTelegramWebhook(req: Request, res: Response): Promise<void> {
+    try {
+      const webhookUrl = req.query.url as string;
+
+      if (!webhookUrl) {
+        // Return current webhook info
+        const info = await telegramService.getWebhookInfo();
+        res.json({
+          message: 'Current webhook info',
+          info,
+          setup_url: 'Add ?url=YOUR_WEBHOOK_URL to set webhook',
+        });
+        return;
+      }
+
+      // Set webhook
+      const fullUrl = `${webhookUrl}/api/webhook/telegram`;
+      const success = await telegramService.setWebhook(fullUrl);
+
+      if (success) {
+        res.json({
+          message: 'Webhook set successfully',
+          webhook_url: fullUrl,
+        });
+      } else {
+        res.status(500).json({ error: 'Failed to set webhook' });
+      }
+    } catch (error: any) {
+      logger.error('Failed to setup Telegram webhook', { error });
+      res.status(500).json({ error: error.message });
+    }
   }
 }
 

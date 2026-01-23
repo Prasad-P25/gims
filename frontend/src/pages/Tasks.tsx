@@ -227,27 +227,29 @@ export default function Tasks() {
             </div>
 
             {/* Pagination */}
-            <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                Showing {((page - 1) * 10) + 1} to {Math.min(page * 10, data.total)} of {data.total} results
+            <div className="px-4 py-3 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-sm text-gray-500 text-center sm:text-left">
+                <span className="hidden sm:inline">Showing {((page - 1) * 10) + 1} to {Math.min(page * 10, data.total)} of </span>
+                <span className="sm:hidden">{data.total} </span>
+                {data.total} <span className="sm:hidden">tasks</span><span className="hidden sm:inline">results</span>
               </div>
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
-                  className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-5 w-5 sm:h-4 sm:w-4" />
                 </button>
-                <span className="text-sm text-gray-700">
-                  Page {page} of {Math.ceil(data.total / 10)}
+                <span className="text-sm text-gray-700 min-w-[80px] text-center">
+                  {page} / {Math.ceil(data.total / 10)}
                 </span>
                 <button
                   onClick={() => setPage(page + 1)}
                   disabled={page >= Math.ceil(data.total / 10)}
-                  className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="p-2 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-5 w-5 sm:h-4 sm:w-4" />
                 </button>
               </div>
             </div>

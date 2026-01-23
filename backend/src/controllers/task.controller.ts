@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { taskService } from '../services/task.service';
-import { sendSuccess, sendCreated, sendNoContent, sendNotFound } from '../utils/response';
+import { geminiService } from '../services/gemini.service';
+import { sendSuccess, sendCreated, sendNoContent, sendNotFound, sendError } from '../utils/response';
 import { AuthenticatedRequest, TaskFilters, PaginationParams } from '../types';
 
 export class TaskController {
@@ -141,6 +142,54 @@ export class TaskController {
   async getCategories(req: Request, res: Response): Promise<void> {
     const categories = await taskService.getCategories();
     sendSuccess(res, categories);
+  }
+
+  /**
+   * Process voice input and extract task data
+   * Used by frontend voice recording feature
+   */
+  async processVoice(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const audioBuffer = req.file?.buffer;
+      const mimeType = req.file?.mimetype || 'audio/webm';
+
+      if (!audioBuffer) {
+        sendError(res, 'No audio file provided', 400);
+        return;
+      }
+
+      // Transcribe audio using Gemini
+      const transcription = await geminiService.transcribeAudio(audioBuffer, mimeType);
+
+      // Get categories for extraction
+      const categories = await taskService.getCategories();
+
+      // Extract task data from transcription
+      const extracted = await geminiService.extractTaskData(
+        transcription.text,
+        categories,
+        transcription.language
+      );
+
+      // Return extracted data for form auto-fill
+      sendSuccess(res, {
+        transcription: {
+          text: transcription.text,
+          language: transcription.language,
+          confidence: transcription.confidence,
+        },
+        extracted: {
+          category_id: extracted.category_id,
+          task_data: extracted.task_data,
+          priority: extracted.priority,
+          summary: extracted.summary,
+          confidence: extracted.confidence,
+        },
+      });
+    } catch (error: any) {
+      console.error('Voice processing error:', error);
+      sendError(res, error.message || 'Failed to process voice input', 500);
+    }
   }
 }
 

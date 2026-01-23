@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Mic } from 'lucide-react';
 import { tasksService } from '../services/tasks';
 import { dashboardService } from '../services/dashboard';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 export default function TaskForm() {
   const { id } = useParams();
@@ -25,6 +26,7 @@ export default function TaskForm() {
   });
 
   const [error, setError] = useState('');
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
 
   // Fetch categories
   const { data: categories } = useQuery({
@@ -115,6 +117,36 @@ export default function TaskForm() {
     }
   };
 
+  // Handle voice transcription result - auto-fill form
+  const handleVoiceTranscription = (data: {
+    transcription: { text: string; language: string; confidence: number };
+    extracted: {
+      category_id: number | null;
+      task_data: Record<string, string>;
+      priority: 'high' | 'medium' | 'low';
+      summary: string;
+      confidence: number;
+    };
+  }) => {
+    // Store the transcript for display
+    setVoiceTranscript(data.transcription.text);
+
+    // Auto-fill form with extracted data
+    setFormData((prev) => ({
+      ...prev,
+      category_id: data.extracted.category_id?.toString() || prev.category_id,
+      priority: data.extracted.priority || prev.priority,
+      task_data: {
+        ...prev.task_data,
+        title: data.extracted.task_data.title || prev.task_data.title,
+        description: data.extracted.task_data.description || data.extracted.summary || prev.task_data.description,
+        applicant_name: data.extracted.task_data.applicant_name || prev.task_data.applicant_name,
+        applicant_phone: data.extracted.task_data.applicant_phone || prev.task_data.applicant_phone,
+        due_date: data.extracted.task_data.due_date || prev.task_data.due_date,
+      },
+    }));
+  };
+
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   if (isEditing && taskLoading) {
@@ -144,6 +176,33 @@ export default function TaskForm() {
           </p>
         </div>
       </div>
+
+      {/* Voice Input Section - Only show for new tasks */}
+      {!isEditing && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2">
+            <Mic className="h-5 w-5 text-red-500" />
+            <h2 className="text-lg font-semibold text-gray-900">Voice Input</h2>
+            <span className="text-sm text-gray-500">(Optional)</span>
+          </div>
+
+          <VoiceRecorder
+            onTranscription={handleVoiceTranscription}
+            disabled={isSubmitting}
+          />
+
+          {/* Show transcription if available */}
+          {voiceTranscript && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+              <p className="text-sm font-medium text-green-800 mb-1">Transcription:</p>
+              <p className="text-sm text-green-700">{voiceTranscript}</p>
+              <p className="text-xs text-green-600 mt-2">
+                ✅ Form fields have been auto-filled. Review and edit if needed.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="card space-y-6">

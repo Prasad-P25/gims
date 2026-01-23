@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   ClipboardList,
   FileText,
-  Bell,
   Settings,
   Users,
   LogOut,
@@ -15,7 +14,6 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Tasks', href: '/tasks', icon: ClipboardList },
   { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Reminders', href: '/reminders', icon: Bell },
 ];
 
 const adminNavigation = [
@@ -44,24 +42,32 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-auto',
+          'fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900 to-slate-800 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-auto',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center h-16 px-6 border-b border-gray-200">
-            <span className="text-2xl mr-2">🏛️</span>
-            <div>
-              <h1 className="text-xl font-bold text-primary-600">GIMS</h1>
-              <p className="text-xs text-gray-500">Task Registry</p>
+          <div className="flex items-center h-20 px-4 border-b border-slate-700">
+            <img
+              src="/logo.png"
+              alt="GURUAMRUT"
+              className="h-12 w-auto"
+              onError={(e) => {
+                // Fallback if logo doesn't load
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <div className="ml-2">
+              <h1 className="text-lg font-bold text-brand-blue">GURUAMRUT</h1>
+              <p className="text-[10px] text-gray-400 leading-tight">Infrastructure &<br/>Management Services</p>
             </div>
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
             <div className="mb-4">
-              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Main Menu
               </p>
             </div>
@@ -73,10 +79,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                    'flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors',
                     isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                   )
                 }
               >
@@ -87,8 +93,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
             {user?.role === 'admin' && (
               <>
-                <div className="pt-4 mt-4 border-t border-gray-200">
-                  <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <div className="pt-4 mt-4 border-t border-slate-700">
+                  <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Admin
                   </p>
                 </div>
@@ -99,10 +105,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     onClick={onClose}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                        'flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors',
                         isActive
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30'
+                          : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                       )
                     }
                   >
@@ -115,21 +121,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </nav>
 
           {/* User info & logout */}
-          <div className="border-t border-gray-200 p-4">
+          <div className="border-t border-slate-700 p-4">
             <div className="flex items-center mb-3">
-              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
-                <span className="text-primary-600 font-semibold">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-brand-blue to-brand-green flex items-center justify-center">
+                <span className="text-white font-semibold">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+                <p className="text-sm font-medium text-white">{user?.name}</p>
+                <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
               </div>
             </div>
             <button
               onClick={logout}
-              className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
+              className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
             >
               <LogOut className="mr-3 h-5 w-5" />
               Sign Out

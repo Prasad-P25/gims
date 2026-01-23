@@ -13,6 +13,18 @@ router.post(
   asyncHandler((req, res) => webhookController.handleWebhook(req, res))
 );
 
+// POST /api/webhook/telegram - Receive Telegram messages
+router.post(
+  '/telegram',
+  asyncHandler((req, res) => webhookController.handleTelegramWebhook(req, res))
+);
+
+// GET /api/webhook/telegram/setup - Setup Telegram webhook
+router.get(
+  '/telegram/setup',
+  asyncHandler((req, res) => webhookController.setupTelegramWebhook(req, res))
+);
+
 // POST /api/webhook/test - Test webhook endpoint (development only)
 router.post('/test', (req, res) => webhookController.testWebhook(req, res));
 

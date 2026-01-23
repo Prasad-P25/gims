@@ -38,6 +38,10 @@ const envSchema = z.object({
 
   // Gemini AI
   GEMINI_API_KEY: z.string(),
+  GEMINI_API_KEY_VOICE: z.string().optional(), // Optional second key for voice/audio processing
+
+  // Telegram Bot
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
 
   // File Storage
   UPLOAD_DIR: z.string().default('./uploads'),

@@ -4,6 +4,12 @@ import { logger } from './utils/logger';
 import { pool, healthCheck as dbHealthCheck, closePool } from './config/database';
 import { redis, redisHealthCheck, closeRedis } from './config/redis';
 
+// Import queues to start processors
+import { closeQueues } from './queues/message.queue';
+import { closeTelegramQueues } from './queues/telegram.queue';
+
+logger.info('Message queues initialized');
+
 const PORT = env.PORT;
 const HOST = env.HOST;
 
@@ -16,6 +22,10 @@ const gracefulShutdown = async (signal: string) => {
     logger.info('HTTP server closed');
 
     try {
+      // Close message queues
+      await closeQueues();
+      await closeTelegramQueues();
+
       // Close database connection
       await closePool();
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate } from '../middlewares/auth.middleware';
 import { validateBody, validateQuery, validateParams } from '../middlewares/validate.middleware';
 import { taskCreateSchema, taskUpdateSchema, taskFiltersSchema, paginationSchema, uuidSchema } from '../utils/validators';
@@ -8,6 +9,22 @@ import { AuthenticatedRequest } from '../types';
 import { z } from 'zod';
 
 const router = Router();
+
+// Configure multer for voice file uploads (in-memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept audio files
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed'));
+    }
+  },
+});
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -49,6 +66,13 @@ router.post(
   '/',
   validateBody(taskCreateSchema),
   asyncHandler((req, res) => taskController.createTask(req as AuthenticatedRequest, res))
+);
+
+// POST /api/tasks/process-voice - Process voice input and extract task data
+router.post(
+  '/process-voice',
+  upload.single('audio'),
+  asyncHandler((req, res) => taskController.processVoice(req as AuthenticatedRequest, res))
 );
 
 // PUT /api/tasks/:id - Update task

@@ -27,10 +27,16 @@ export class ReportService {
   private reportsDir: string;
 
   constructor() {
-    this.reportsDir = path.join(env.UPLOAD_DIR, 'reports');
+    // Use absolute path for reports directory
+    this.reportsDir = path.resolve(process.cwd(), env.UPLOAD_DIR, 'reports');
     // Ensure reports directory exists
-    if (!fs.existsSync(this.reportsDir)) {
-      fs.mkdirSync(this.reportsDir, { recursive: true });
+    try {
+      if (!fs.existsSync(this.reportsDir)) {
+        fs.mkdirSync(this.reportsDir, { recursive: true });
+        logger.info('Reports directory created', { path: this.reportsDir });
+      }
+    } catch (error) {
+      logger.error('Failed to create reports directory', { path: this.reportsDir, error });
     }
   }
 

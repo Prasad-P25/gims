@@ -23,11 +23,27 @@ export default function Reports() {
   };
 
   const handleGenerateReport = async (format: 'pdf' | 'excel') => {
+    // Ensure dates are set
+    let startDate = filters.start_date;
+    let endDate = filters.end_date;
+
+    if (!startDate || !endDate) {
+      // Default to current month if no dates selected
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startDate = startDate || firstDay.toISOString().split('T')[0];
+      endDate = endDate || lastDay.toISOString().split('T')[0];
+    }
+
     setIsGenerating(format);
     try {
       const blob = await reportsService.generateReport({
         format,
-        ...filters,
+        start_date: startDate,
+        end_date: endDate,
+        category_id: filters.category_id,
+        status: filters.status,
       });
 
       // Create download link
@@ -39,9 +55,10 @@ export default function Reports() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report. Please try again.');
+      const message = error.response?.data?.error || error.message || 'Failed to generate report. Please try again.';
+      alert(message);
     } finally {
       setIsGenerating(null);
     }

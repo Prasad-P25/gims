@@ -32,19 +32,24 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-600 to-primary-800 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
         {/* Logo / Header */}
         <div className="text-center mb-8">
-          <div className="mx-auto h-16 w-16 bg-white rounded-full flex items-center justify-center mb-4">
-            <span className="text-3xl">🏛️</span>
-          </div>
-          <h1 className="text-3xl font-bold text-white">GIMS</h1>
-          <p className="mt-2 text-primary-200">
-            Government Information Management System
+          <img
+            src="/logo.png"
+            alt="GURUAMRUT"
+            className="mx-auto h-24 w-auto mb-4"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          <h1 className="text-3xl font-bold text-[#00A0E3]">GURUAMRUT</h1>
+          <p className="mt-1 text-lg text-gray-300">
+            Infrastructure and Management Services
           </p>
-          <p className="text-sm text-primary-300">
-            शासकीय माहिती व्यवस्थापन प्रणाली
+          <p className="text-sm text-gray-400 mt-2">
+            कार्य व्यवस्थापन प्रणाली | Task Management System
           </p>
         </div>
 
@@ -98,7 +103,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-primary py-3"
+              className="w-full bg-[#00A0E3] hover:bg-[#0088c2] text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center">
@@ -136,8 +141,8 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="mt-4 text-center text-sm text-primary-200">
-          Task Registry System for Government Officials
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Powered by <span className="text-[#00A0E3]">GURUAMRUT</span> | सेवा हाच आमचा धर्म
         </p>
       </div>
     </div>

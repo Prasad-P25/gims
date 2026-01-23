@@ -25,13 +25,43 @@ interface CategoryMatch {
 
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
+  private genAIVoice: GoogleGenerativeAI;
   private model: GenerativeModel;
-  private visionModel: GenerativeModel;
+  private voiceModel: GenerativeModel;
 
   constructor() {
+    // Primary API for text processing
     this.genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    this.visionModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+
+    // Secondary API for voice/audio processing (uses separate key if available)
+    const voiceApiKey = env.GEMINI_API_KEY_VOICE || env.GEMINI_API_KEY;
+    this.genAIVoice = new GoogleGenerativeAI(voiceApiKey);
+    this.voiceModel = this.genAIVoice.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+  }
+
+  /**
+   * Normalize mime type for Gemini API compatibility
+   */
+  private normalizeMimeType(mimeType: string): string {
+    // Telegram sends various formats, normalize them for Gemini
+    const mimeMap: Record<string, string> = {
+      'audio/ogg': 'audio/ogg',
+      'audio/ogg; codecs=opus': 'audio/ogg',
+      'audio/oga': 'audio/ogg',
+      'audio/opus': 'audio/ogg',
+      'audio/webm': 'audio/webm',
+      'audio/webm; codecs=opus': 'audio/webm',
+      'audio/mp4': 'audio/mp4',
+      'audio/mpeg': 'audio/mpeg',
+      'audio/mp3': 'audio/mpeg',
+      'audio/wav': 'audio/wav',
+      'audio/x-wav': 'audio/wav',
+    };
+
+    const normalized = mimeMap[mimeType.toLowerCase()] || mimeType;
+    logger.debug('Normalized mime type', { original: mimeType, normalized });
+    return normalized;
   }
 
   /**
@@ -39,7 +69,17 @@ export class GeminiService {
    */
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<TranscriptionResult> {
     try {
+      logger.info('Starting audio transcription', {
+        bufferSize: audioBuffer.length,
+        mimeType,
+      });
+
+      if (audioBuffer.length < 100) {
+        throw new Error('Audio buffer too small - possibly empty or corrupted');
+      }
+
       const base64Audio = audioBuffer.toString('base64');
+      const normalizedMimeType = this.normalizeMimeType(mimeType);
 
       const prompt = `You are an expert transcriber for Indian languages. Transcribe the following audio accurately.
 
@@ -50,6 +90,7 @@ Instructions:
 2. Detect the primary language used
 3. If mixed languages, note the primary one
 4. Provide a confidence score (0-1) for your transcription
+5. If you cannot hear any speech or the audio is unclear, set text to empty and confidence to 0
 
 Respond in JSON format:
 {
@@ -58,28 +99,42 @@ Respond in JSON format:
   "confidence": 0.95
 }`;
 
-      const result = await this.model.generateContent([
+      logger.info('Sending audio to Gemini for transcription', {
+        base64Length: base64Audio.length,
+        normalizedMimeType,
+      });
+
+      // Use voice model (separate API key if configured)
+      const result = await this.voiceModel.generateContent([
         prompt,
         {
           inlineData: {
-            mimeType: mimeType,
+            mimeType: normalizedMimeType,
             data: base64Audio,
           },
         },
       ]);
 
       const response = result.response.text();
+      logger.debug('Gemini response', { response: response.substring(0, 200) });
+
       const parsed = this.parseJsonResponse<TranscriptionResult>(response);
 
-      logger.info('Audio transcribed', {
+      logger.info('Audio transcribed successfully', {
         language: parsed.language,
         confidence: parsed.confidence,
         textLength: parsed.text.length,
+        textPreview: parsed.text.substring(0, 50),
       });
 
       return parsed;
-    } catch (error) {
-      logger.error('Failed to transcribe audio', { error });
+    } catch (error: any) {
+      logger.error('Failed to transcribe audio', {
+        error: error.message,
+        stack: error.stack,
+        mimeType,
+        bufferSize: audioBuffer.length,
+      });
       throw error;
     }
   }
@@ -97,11 +152,21 @@ Respond in JSON format:
         .map((c) => `${c.category_id}: ${c.name_english} (${c.name_marathi})`)
         .join('\n');
 
+      // Get today's date for relative date calculations
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
       const prompt = `You are an AI assistant for a Government Information Management System (GIMS) in Maharashtra, India.
 
 Analyze the following user input (in ${language}) and extract task information for government work registration.
 
 User Input: "${text}"
+
+TODAY'S DATE: ${todayStr}
+TOMORROW'S DATE: ${tomorrowStr}
 
 Available Categories:
 ${categoryList}
@@ -114,6 +179,15 @@ Instructions:
 5. Create a brief summary in the same language as input
 6. Assess priority based on urgency indicators (emergency = high, regular = medium, low-priority = low)
 7. Provide confidence score for your extraction
+
+IMPORTANT DATE EXTRACTION:
+- Convert ALL relative dates to YYYY-MM-DD format using today's date (${todayStr})
+- Common date phrases to convert:
+  - Marathi: आज (today), उद्या (tomorrow), परवा (day after tomorrow), पुढच्या आठवड्यात (next week), या महिन्यात (this month)
+  - Hindi: आज (today), कल (tomorrow), परसों (day after tomorrow), अगले हफ्ते (next week)
+  - English: today, tomorrow, next week, this week, next month, in 2 days, etc.
+- If a specific date is mentioned (e.g., "25 January", "15 तारीख"), convert to YYYY-MM-DD
+- If NO date is mentioned, leave due_date empty
 
 IMPORTANT: The "title" field MUST be a short, clear title like:
 - "Road repair needed at Main Street"
@@ -135,7 +209,7 @@ Respond in JSON format:
     "location": "extracted location if any",
     "applicant_name": "extracted person name if any",
     "applicant_phone": "extracted phone number if any",
-    "due_date": "extracted due date if mentioned (YYYY-MM-DD format)",
+    "due_date": "YYYY-MM-DD format - convert relative dates like 'tomorrow' to actual date",
     "additional_details": "any other relevant details"
   },
   "summary": "brief summary in original language",
