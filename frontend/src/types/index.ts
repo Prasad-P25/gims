@@ -44,6 +44,7 @@ export interface FieldTemplate {
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type InputMode = 'voice' | 'text';
+export type InputSource = 'web' | 'telegram' | 'whatsapp';
 
 export interface Task {
   registry_id: string;
@@ -53,6 +54,7 @@ export interface Task {
   registration_time: string;
   task_data: Record<string, unknown>;
   input_mode: InputMode;
+  input_source: InputSource;
   input_language?: string;
   original_input?: string;
   transcription?: string;

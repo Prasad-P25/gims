@@ -59,6 +59,9 @@ const envSchema = z.object({
   // Reminder Settings
   MORNING_REMINDER_TIME: z.string().default('09:00'),
   EVENING_REMINDER_TIME: z.string().default('18:00'),
+
+  // Notification Settings
+  DAILY_NOTIFICATION_HOUR: z.string().transform(Number).default('19'), // 7 PM IST (24-hour format)
 });
 
 const parseEnv = () => {

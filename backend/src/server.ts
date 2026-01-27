@@ -7,8 +7,14 @@ import { redis, redisHealthCheck, closeRedis } from './config/redis';
 // Import queues to start processors
 import { closeQueues } from './queues/message.queue';
 import { closeTelegramQueues } from './queues/telegram.queue';
+import { initializeNotificationSchedules, closeNotificationQueue } from './queues/notification.queue';
 
 logger.info('Message queues initialized');
+
+// Initialize notification schedules
+initializeNotificationSchedules().catch((error) => {
+  logger.error('Failed to initialize notification schedules:', error);
+});
 
 const PORT = env.PORT;
 const HOST = env.HOST;
@@ -25,6 +31,7 @@ const gracefulShutdown = async (signal: string) => {
       // Close message queues
       await closeQueues();
       await closeTelegramQueues();
+      await closeNotificationQueue();
 
       // Close database connection
       await closePool();

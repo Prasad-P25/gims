@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 import { addMessageJob } from '../queues/message.queue';
 import { addTelegramMessageJob } from '../queues/telegram.queue';
 import { telegramService, TelegramUpdate } from '../services/telegram.service';
+import { notificationService } from '../services/notification.service';
+import { scheduleTestNotification } from '../queues/notification.queue';
 import { WhatsAppWebhookPayload } from '../types';
 
 export class WebhookController {
@@ -115,6 +117,21 @@ export class WebhookController {
         message: update.message,
       });
     }
+
+    // Handle callback query (button clicks)
+    if (update.callback_query) {
+      logger.info('Telegram callback received', {
+        chatId: update.callback_query.message?.chat.id,
+        data: update.callback_query.data,
+        from: update.callback_query.from?.username || update.callback_query.from?.first_name,
+      });
+
+      // Queue for async processing
+      await addTelegramMessageJob({
+        message: update.callback_query.message,
+        callbackQuery: update.callback_query,
+      });
+    }
   }
 
   /**
@@ -149,6 +166,54 @@ export class WebhookController {
       }
     } catch (error: any) {
       logger.error('Failed to setup Telegram webhook', { error });
+      res.status(500).json({ error: error.message });
+    }
+  }
+  /**
+   * Trigger daily summary notification (for testing)
+   */
+  async triggerDailySummary(req: Request, res: Response): Promise<void> {
+    if (env.NODE_ENV === 'production') {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    try {
+      logger.info('Manually triggering daily summary notification');
+      const result = await notificationService.sendDailySummaryToAdmins();
+      res.json({
+        message: 'Daily summary sent',
+        ...result,
+      });
+    } catch (error: any) {
+      logger.error('Failed to trigger daily summary', { error });
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Schedule a test notification after X minutes (for testing)
+   */
+  async scheduleTestNotification(req: Request, res: Response): Promise<void> {
+    if (env.NODE_ENV === 'production') {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    try {
+      const minutes = parseInt(req.query.minutes as string) || 2;
+      logger.info(`Scheduling test notification in ${minutes} minutes`);
+
+      await scheduleTestNotification(minutes);
+
+      const triggerTime = new Date(Date.now() + minutes * 60000);
+      res.json({
+        message: `Notification scheduled`,
+        triggerIn: `${minutes} minutes`,
+        triggerAt: triggerTime.toLocaleTimeString('en-IN'),
+      });
+    } catch (error: any) {
+      logger.error('Failed to schedule test notification', { error });
       res.status(500).json({ error: error.message });
     }
   }

@@ -45,9 +45,23 @@ export interface TelegramMessage {
   };
 }
 
+export interface TelegramCallbackQuery {
+  id: string;
+  from: {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    last_name?: string;
+    username?: string;
+  };
+  message?: TelegramMessage;
+  data?: string;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 }
 
 class TelegramService {
@@ -269,6 +283,20 @@ Type <b>/today</b> to see today's tasks.
       '<b>Select a category:</b>\nश्रेणी निवडा:',
       buttons
     );
+  }
+
+  /**
+   * Answer a callback query (acknowledge button click)
+   */
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    try {
+      await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+        callback_query_id: callbackQueryId,
+        text: text || '',
+      });
+    } catch (error: any) {
+      logger.error('Failed to answer callback query', { error: error.message });
+    }
   }
 }
 

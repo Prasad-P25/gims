@@ -224,6 +224,42 @@ export class AuthController {
     logger.info('User logged out', { userId: req.user?.user_id });
     sendSuccess(res, null, 'Logged out successfully');
   }
+
+  /**
+   * Get all users (admin only)
+   */
+  async getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const result = await query<User>(
+      `SELECT user_id, name, phone, email, role, preferred_language, is_active, created_at
+       FROM users WHERE deleted_at IS NULL
+       ORDER BY created_at DESC`
+    );
+
+    sendSuccess(res, result.rows);
+  }
+
+  /**
+   * Toggle user active status (admin only)
+   */
+  async toggleUserStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const { userId } = req.params;
+
+    const result = await query<User>(
+      `UPDATE users
+       SET is_active = NOT is_active, updated_at = NOW()
+       WHERE user_id = $1 AND deleted_at IS NULL
+       RETURNING user_id, name, phone, email, role, preferred_language, is_active`,
+      [userId]
+    );
+
+    if (!result.rows[0]) {
+      sendNotFound(res, 'User not found');
+      return;
+    }
+
+    logger.info('User status toggled', { userId, isActive: result.rows[0].is_active });
+    sendSuccess(res, result.rows[0], `User ${result.rows[0].is_active ? 'activated' : 'deactivated'} successfully`);
+  }
 }
 
 export const authController = new AuthController();

@@ -33,8 +33,8 @@ export default function Users() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const response = await api.get<{ users: User[] }>('/auth/users');
-      return response.data.users;
+      const response = await api.get<User[]>('/auth/users');
+      return response.data;
     },
   });
 
@@ -44,6 +44,10 @@ export default function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       resetForm();
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.error || error.message || 'Failed to create user';
+      alert(message);
     },
   });
 

@@ -5,32 +5,71 @@ import { bullRedisConfig } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { query } from '../config/database';
-import { telegramService, TelegramMessage } from '../services/telegram.service';
+import { telegramService, TelegramMessage, TelegramCallbackQuery } from '../services/telegram.service';
 import { geminiService } from '../services/gemini.service';
 import { taskService } from '../services/task.service';
+import { notificationService } from '../services/notification.service';
 
-// Helper function to get user by telegram ID or return default admin
-async function getUserIdByTelegramId(telegramId: number): Promise<string> {
-  // For now, return admin user - can be extended to map telegram users to system users
-  const adminResult = await query(
-    'SELECT user_id FROM users WHERE phone = $1 AND deleted_at IS NULL',
-    ['9999999999']
+// Helper function to get user by telegram ID
+async function getUserIdByTelegramId(telegramId: number): Promise<string | null> {
+  // First, try to find user by telegram_id
+  const telegramUser = await query(
+    'SELECT user_id, name FROM users WHERE telegram_id = $1 AND deleted_at IS NULL AND is_active = true',
+    [telegramId]
   );
 
-  if (adminResult.rows[0]) {
-    return adminResult.rows[0].user_id;
+  if (telegramUser.rows[0]) {
+    logger.info('Found user by telegram_id', { telegramId, userId: telegramUser.rows[0].user_id, name: telegramUser.rows[0].name });
+    return telegramUser.rows[0].user_id;
   }
 
-  // Fallback - get any active user
-  const anyUser = await query(
-    'SELECT user_id FROM users WHERE is_active = true AND deleted_at IS NULL LIMIT 1'
+  // No linked user found
+  logger.info('No user found for telegram_id', { telegramId });
+  return null;
+}
+
+// Helper function to link telegram account to user
+async function linkTelegramToUser(telegramId: number, phone: string): Promise<{ success: boolean; userName?: string; error?: string }> {
+  // Find user by phone
+  const userResult = await query(
+    'SELECT user_id, name, telegram_id FROM users WHERE phone = $1 AND deleted_at IS NULL AND is_active = true',
+    [phone]
   );
 
-  return anyUser.rows[0]?.user_id || '';
+  if (!userResult.rows[0]) {
+    return { success: false, error: 'Phone number not found in system' };
+  }
+
+  const user = userResult.rows[0];
+
+  // Check if already linked to another telegram account
+  if (user.telegram_id && user.telegram_id !== telegramId) {
+    return { success: false, error: 'This phone is already linked to another Telegram account' };
+  }
+
+  // Check if this telegram_id is already linked to another user
+  const existingLink = await query(
+    'SELECT user_id, name FROM users WHERE telegram_id = $1 AND user_id != $2',
+    [telegramId, user.user_id]
+  );
+
+  if (existingLink.rows[0]) {
+    return { success: false, error: `This Telegram account is already linked to ${existingLink.rows[0].name}` };
+  }
+
+  // Link the account
+  await query(
+    'UPDATE users SET telegram_id = $1, updated_at = NOW() WHERE user_id = $2',
+    [telegramId, user.user_id]
+  );
+
+  logger.info('Telegram account linked', { telegramId, userId: user.user_id, userName: user.name });
+  return { success: true, userName: user.name };
 }
 
 interface TelegramMessageJobData {
-  message: TelegramMessage;
+  message?: TelegramMessage;
+  callbackQuery?: TelegramCallbackQuery;
 }
 
 interface TelegramVoiceJobData {
@@ -78,7 +117,34 @@ telegramMessageQueue.on('error', (error) => {
 
 // Process incoming Telegram messages
 telegramMessageQueue.process(async (job: Job<TelegramMessageJobData>) => {
-  const { message } = job.data;
+  const { message, callbackQuery } = job.data;
+
+  // Handle callback query (button clicks)
+  if (callbackQuery) {
+    logger.info('Processing callback query', {
+      jobId: job.id,
+      callbackId: callbackQuery.id,
+      data: callbackQuery.data,
+    });
+
+    try {
+      await processCallbackQuery(callbackQuery);
+      return { success: true, callbackId: callbackQuery.id };
+    } catch (error: any) {
+      logger.error('Failed to process callback query', {
+        callbackId: callbackQuery.id,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // Handle regular message
+  if (!message) {
+    logger.warn('No message or callback query in job data');
+    return { success: false };
+  }
+
   const chatId = message.chat.id;
 
   logger.info('Processing Telegram message from queue', {
@@ -123,6 +189,68 @@ telegramMessageQueue.process(async (job: Job<TelegramMessageJobData>) => {
 });
 
 logger.info('Telegram queue processor registered');
+
+// Process callback queries (button clicks)
+async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promise<void> {
+  const chatId = callbackQuery.message?.chat.id;
+  const data = callbackQuery.data || '';
+  const fromId = callbackQuery.from.id;
+
+  if (!chatId) {
+    logger.error('No chat ID in callback query');
+    return;
+  }
+
+  // Acknowledge the callback
+  await telegramService.answerCallbackQuery(callbackQuery.id, 'Processing...');
+
+  // Check if user is linked
+  const userId = await getUserIdByTelegramId(fromId);
+  if (!userId) {
+    await telegramService.sendMessage(
+      chatId,
+      `🔗 <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nPlease link your Telegram account first using:\n<code>/link YOUR_PHONE_NUMBER</code>`
+    );
+    return;
+  }
+
+  // Handle category selection
+  if (data.startsWith('category_')) {
+    const categoryId = parseInt(data.replace('category_', ''), 10);
+    logger.info('Category selected', { categoryId, chatId });
+
+    // Get the original message text (if available from context)
+    // For now, create a simple task with the selected category
+    const category = await taskService.getCategoryById(categoryId);
+
+    if (!category) {
+      await telegramService.sendMessage(chatId, '❌ Invalid category selected.');
+      return;
+    }
+
+    // Create task with the selected category
+    const task = await taskService.createTask(
+      {
+        category_id: categoryId,
+        task_data: {
+          title: 'Task from Telegram',
+          description: 'Task created via category selection',
+        },
+        input_mode: 'text',
+        input_source: 'telegram',
+        priority: 'medium',
+      },
+      userId
+    );
+
+    await telegramService.sendTaskConfirmation(chatId, {
+      registryId: task.registry_id,
+      category: category.name_marathi || category.name_english,
+      summary: 'Task created via category selection',
+      date: new Date().toLocaleDateString('en-IN'),
+    });
+  }
+}
 
 // Process text messages
 async function processTextMessage(message: TelegramMessage): Promise<void> {
@@ -169,18 +297,28 @@ You can:
     return;
   }
 
+  // Check if user is linked
+  const userId = await getUserIdByTelegramId(message.from.id);
+  if (!userId) {
+    await telegramService.sendMessage(
+      chatId,
+      `🔗 <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nPlease link your Telegram account first using:\n<code>/link YOUR_PHONE_NUMBER</code>\n\nउदाहरण: <code>/link 9876543210</code>`
+    );
+    return;
+  }
+
   // Try to extract task from natural language
   const categories = await taskService.getCategories();
   const extracted = await geminiService.extractTaskData(text, categories, 'marathi');
 
   if (extracted.confidence > 0.7 && extracted.category_id) {
     // Create task
-    const userId = await getUserIdByTelegramId(message.from.id);
     const task = await taskService.createTask(
       {
         category_id: extracted.category_id,
         task_data: extracted.task_data,
         input_mode: 'text',
+        input_source: 'telegram',
         input_language: 'marathi',
         original_input: text,
         priority: extracted.priority,
@@ -222,6 +360,16 @@ async function processVoiceMessage(message: TelegramMessage): Promise<void> {
   const fileSize = message.voice?.file_size || message.audio?.file_size || 0;
 
   logger.info('Processing voice message', { chatId, fileId, mimeType, duration, fileSize });
+
+  // Check if user is linked first
+  const userId = await getUserIdByTelegramId(message.from.id);
+  if (!userId) {
+    await telegramService.sendMessage(
+      chatId,
+      `🔗 <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nPlease link your Telegram account first using:\n<code>/link YOUR_PHONE_NUMBER</code>\n\nउदाहरण: <code>/link 9876543210</code>`
+    );
+    return;
+  }
 
   if (!fileId) {
     logger.error('No file ID in voice message', { message });
@@ -287,13 +435,13 @@ async function processVoiceMessage(message: TelegramMessage): Promise<void> {
     );
 
     if (extracted.confidence > 0.6 && extracted.category_id) {
-      // Create task
-      const userId = await getUserIdByTelegramId(message.from.id);
+      // Create task (userId already fetched and validated above)
       const task = await taskService.createTask(
         {
           category_id: extracted.category_id,
           task_data: extracted.task_data,
           input_mode: 'voice',
+          input_source: 'telegram',
           input_language: transcription.language,
           transcription: transcription.text,
           priority: extracted.priority,
@@ -363,17 +511,22 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
       const helpText = `
 <b>GIMS Task Bot Commands:</b>
 
-/start - Start the bot
-/help - Show this help message
+<b>Account:</b>
+/link [phone] - Link your Telegram to GIMS account
+/whoami - Show your linked account info
+
+<b>Tasks:</b>
 /status - Show full task overview with details
 /today - Show today's tasks
 /pending - Show all pending tasks
 /menu - Show category menu
+/summary - Daily task summary (admin only)
 
 <b>How to use:</b>
-• Send a text message describing your task
-• Send a voice message in Marathi, Hindi, or English
-• The bot will automatically categorize and register your task
+1. First link your account: <code>/link 9876543210</code>
+2. Send a text message describing your task
+3. Or send a voice message in Marathi/Hindi/English
+4. The bot will automatically categorize and register your task
 
 <b>Example messages:</b>
 • "उद्या सकाळी पाईप दुरुस्ती करायची आहे"
@@ -485,6 +638,93 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
     case '/menu':
       const categories = await taskService.getCategories();
       await telegramService.sendCategoryMenu(chatId, categories);
+      break;
+
+    case '/link':
+      const phoneArg = text.split(' ')[1];
+      if (!phoneArg) {
+        await telegramService.sendMessage(
+          chatId,
+          `🔗 <b>Link your account</b>\n\nखाते जोडा\n\nUsage: <code>/link YOUR_PHONE_NUMBER</code>\n\nExample: <code>/link 9876543210</code>\n\nUse the phone number registered in GIMS system.`
+        );
+        break;
+      }
+
+      // Clean phone number (remove spaces, dashes, +91 prefix)
+      const cleanPhone = phoneArg.replace(/[\s\-\+]/g, '').replace(/^91/, '');
+
+      if (!/^\d{10}$/.test(cleanPhone)) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Invalid phone number</b>\n\nकृपया 10 अंकी फोन नंबर द्या.\n\nPlease provide a valid 10-digit phone number.\n\nExample: <code>/link 9876543210</code>`
+        );
+        break;
+      }
+
+      const linkResult = await linkTelegramToUser(message.from.id, cleanPhone);
+
+      if (linkResult.success) {
+        await telegramService.sendMessage(
+          chatId,
+          `✅ <b>Account linked successfully!</b>\n\nखाते यशस्वीरित्या जोडले!\n\nWelcome, <b>${linkResult.userName}</b>!\n\nYou can now:\n• Send text messages to create tasks\n• Send voice messages in Marathi/Hindi/English\n• Use /status to check tasks\n\nआता तुम्ही कार्ये नोंदवू शकता!`
+        );
+      } else {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Link failed</b>\n\nजोडणी अयशस्वी\n\n${linkResult.error}\n\nPlease contact admin if you need help.`
+        );
+      }
+      break;
+
+    case '/whoami':
+      const currentUserId = await getUserIdByTelegramId(message.from.id);
+      if (currentUserId) {
+        const userInfo = await query(
+          'SELECT name, phone, role FROM users WHERE user_id = $1',
+          [currentUserId]
+        );
+        if (userInfo.rows[0]) {
+          await telegramService.sendMessage(
+            chatId,
+            `👤 <b>Your Account</b>\n\n<b>Name:</b> ${userInfo.rows[0].name}\n<b>Phone:</b> ${userInfo.rows[0].phone}\n<b>Role:</b> ${userInfo.rows[0].role}\n<b>Telegram ID:</b> <code>${message.from.id}</code>`
+          );
+        }
+      } else {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nUse <code>/link YOUR_PHONE</code> to link your account.`
+        );
+      }
+      break;
+
+    case '/summary':
+      // Check if user is linked and is admin
+      const summaryUserId = await getUserIdByTelegramId(message.from.id);
+      if (!summaryUserId) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nUse <code>/link YOUR_PHONE</code> to link your account.`
+        );
+        break;
+      }
+
+      const userRoleCheck = await query(
+        'SELECT role FROM users WHERE user_id = $1',
+        [summaryUserId]
+      );
+
+      if (userRoleCheck.rows[0]?.role !== 'admin') {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Access denied</b>\n\nOnly admins can view the daily summary.\n\nफक्त प्रशासक दैनिक सारांश पाहू शकतात.`
+        );
+        break;
+      }
+
+      // Get and send the daily summary
+      const dailyStats = await notificationService.getDailyStats();
+      const summaryMessage = notificationService.formatDailySummary(dailyStats);
+      await telegramService.sendMessage(chatId, summaryMessage);
       break;
 
     default:

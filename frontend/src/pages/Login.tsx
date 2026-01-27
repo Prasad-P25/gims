@@ -38,16 +38,12 @@ export default function Login() {
         <div className="text-center mb-8">
           <img
             src="/logo.png"
-            alt="GURUAMRUT"
-            className="mx-auto h-24 w-auto mb-4"
+            alt="GURUAMRUT Infrastructure and Management Services"
+            className="mx-auto h-32 w-auto mb-4"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
           />
-          <h1 className="text-3xl font-bold text-[#00A0E3]">GURUAMRUT</h1>
-          <p className="mt-1 text-lg text-gray-300">
-            Infrastructure and Management Services
-          </p>
           <p className="text-sm text-gray-400 mt-2">
             कार्य व्यवस्थापन प्रणाली | Task Management System
           </p>

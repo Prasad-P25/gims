@@ -59,4 +59,20 @@ router.post(
   asyncHandler((req, res) => authController.changePassword(req as AuthenticatedRequest, res))
 );
 
+// GET /api/auth/users - Get all users (admin only)
+router.get(
+  '/users',
+  authenticate,
+  authorize('admin'),
+  asyncHandler((req, res) => authController.getUsers(req as AuthenticatedRequest, res))
+);
+
+// PATCH /api/auth/users/:userId/toggle-status - Toggle user active status (admin only)
+router.patch(
+  '/users/:userId/toggle-status',
+  authenticate,
+  authorize('admin'),
+  asyncHandler((req, res) => authController.toggleUserStatus(req as AuthenticatedRequest, res))
+);
+
 export default router;

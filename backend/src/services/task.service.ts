@@ -21,9 +21,9 @@ export class TaskService {
   ): Promise<TaskRegistry> {
     const sql = `
       INSERT INTO task_registry (
-        category_id, registered_by, task_data, input_mode,
+        category_id, registered_by, task_data, input_mode, input_source,
         input_language, original_input, transcription, priority
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
 
@@ -32,6 +32,7 @@ export class TaskService {
       userId,
       JSON.stringify(input.task_data),
       input.input_mode,
+      input.input_source || 'web',
       input.input_language || null,
       input.original_input || null,
       input.transcription || null,
@@ -164,7 +165,7 @@ export class TaskService {
         u.name as registered_by_name
       FROM task_registry tr
       JOIN categories c ON tr.category_id = c.category_id
-      JOIN users u ON tr.registered_by = u.user_id
+      LEFT JOIN users u ON tr.registered_by = u.user_id
       WHERE ${whereClause}
       ORDER BY tr.${safeSortBy} ${safeSortOrder}
       LIMIT $${paramIndex++} OFFSET $${paramIndex}

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { tasksService } from '../services/tasks';
 import { dashboardService } from '../services/dashboard';
-import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel } from '../lib/utils';
+import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel, getSourceLabel, getSourceColor } from '../lib/utils';
 
 export default function Tasks() {
   const [page, setPage] = useState(1);
@@ -166,6 +166,12 @@ export default function Tasks() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                       Category
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                      Raised By
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">
+                      Source
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
@@ -193,7 +199,17 @@ export default function Tasks() {
                       </td>
                       <td className="px-4 py-4 hidden md:table-cell">
                         <span className="text-sm text-gray-600">
-                          {task.category?.name_english || '-'}
+                          {task.category_name_english || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 hidden lg:table-cell">
+                        <span className="text-sm text-gray-900">
+                          {task.registered_by_name || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 hidden xl:table-cell">
+                        <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', getSourceColor(task.input_source))}>
+                          {getSourceLabel(task.input_source)}
                         </span>
                       </td>
                       <td className="px-4 py-4">

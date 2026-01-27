@@ -28,4 +28,16 @@ router.get(
 // POST /api/webhook/test - Test webhook endpoint (development only)
 router.post('/test', (req, res) => webhookController.testWebhook(req, res));
 
+// POST /api/webhook/test-daily-summary - Test daily summary notification (development only)
+router.post(
+  '/test-daily-summary',
+  asyncHandler((req, res) => webhookController.triggerDailySummary(req, res))
+);
+
+// GET /api/webhook/schedule-test-notification - Schedule a test notification (development only)
+router.get(
+  '/schedule-test-notification',
+  asyncHandler((req, res) => webhookController.scheduleTestNotification(req, res))
+);
+
 export default router;

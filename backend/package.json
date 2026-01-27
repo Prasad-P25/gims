@@ -22,6 +22,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fontsource/noto-sans-devanagari": "^5.2.8",
     "@google/generative-ai": "^0.2.0",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",

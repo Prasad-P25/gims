@@ -19,7 +19,7 @@ export const reportsService = {
     });
 
     // Then download the actual file
-    const downloadUrl = generateResponse.data.data.downloadUrl;
+    const downloadUrl = generateResponse.data.downloadUrl;
     const downloadResponse = await api.get(downloadUrl, {
       responseType: 'blob',
     });
@@ -32,7 +32,7 @@ export const reportsService = {
       params: { date, format },
     });
 
-    const downloadUrl = response.data.data.downloadUrl;
+    const downloadUrl = response.data.downloadUrl;
     const downloadResponse = await api.get(downloadUrl, {
       responseType: 'blob',
     });
@@ -45,7 +45,7 @@ export const reportsService = {
       params: { week_start: weekStart, format },
     });
 
-    const downloadUrl = response.data.data.downloadUrl;
+    const downloadUrl = response.data.downloadUrl;
     const downloadResponse = await api.get(downloadUrl, {
       responseType: 'blob',
     });
@@ -58,7 +58,7 @@ export const reportsService = {
       params: { year, month, format },
     });
 
-    const downloadUrl = response.data.data.downloadUrl;
+    const downloadUrl = response.data.downloadUrl;
     const downloadResponse = await api.get(downloadUrl, {
       responseType: 'blob',
     });

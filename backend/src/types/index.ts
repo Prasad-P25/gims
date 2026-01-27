@@ -12,6 +12,7 @@ export interface User {
   password_hash?: string;
   role: UserRole;
   preferred_language: PreferredLanguage;
+  telegram_id?: number;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -50,15 +51,18 @@ export interface FieldTemplate {
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type InputMode = 'voice' | 'text';
+export type InputSource = 'web' | 'telegram' | 'whatsapp';
 
 export interface TaskRegistry {
   registry_id: string;
   category_id: number;
   registered_by: string;
+  registered_by_name?: string;
   registration_date: Date;
   registration_time: string;
   task_data: Record<string, unknown>;
   input_mode: InputMode;
+  input_source: InputSource;
   input_language?: string;
   original_input?: string;
   transcription?: string;
@@ -73,6 +77,7 @@ export interface TaskCreateInput {
   category_id: number;
   task_data: Record<string, unknown>;
   input_mode: InputMode;
+  input_source?: InputSource;
   input_language?: string;
   original_input?: string;
   transcription?: string;

@@ -91,3 +91,29 @@ export function truncate(str: string, length: number): string {
   if (str.length <= length) return str;
   return str.slice(0, length) + '...';
 }
+
+export function getSourceLabel(source: string): string {
+  switch (source) {
+    case 'telegram':
+      return 'Telegram';
+    case 'whatsapp':
+      return 'WhatsApp';
+    case 'web':
+      return 'Web';
+    default:
+      return source || 'Web';
+  }
+}
+
+export function getSourceColor(source: string): string {
+  switch (source) {
+    case 'telegram':
+      return 'bg-blue-100 text-blue-800';
+    case 'whatsapp':
+      return 'bg-green-100 text-green-800';
+    case 'web':
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}

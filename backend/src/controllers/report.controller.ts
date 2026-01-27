@@ -24,7 +24,7 @@ export class ReportController {
 
     sendSuccess(res, {
       fileName,
-      downloadUrl: `/api/reports/download/${encodeURIComponent(fileName)}`,
+      downloadUrl: `/reports/download/${encodeURIComponent(fileName)}`,
     }, 'Report generated successfully');
   }
 
@@ -85,7 +85,7 @@ export class ReportController {
 
     sendSuccess(res, {
       fileName,
-      downloadUrl: `/api/reports/download/${encodeURIComponent(fileName)}`,
+      downloadUrl: `/reports/download/${encodeURIComponent(fileName)}`,
     });
   }
 
@@ -120,7 +120,7 @@ export class ReportController {
 
     sendSuccess(res, {
       fileName,
-      downloadUrl: `/api/reports/download/${encodeURIComponent(fileName)}`,
+      downloadUrl: `/reports/download/${encodeURIComponent(fileName)}`,
     });
   }
 
@@ -153,7 +153,7 @@ export class ReportController {
 
     sendSuccess(res, {
       fileName,
-      downloadUrl: `/api/reports/download/${encodeURIComponent(fileName)}`,
+      downloadUrl: `/reports/download/${encodeURIComponent(fileName)}`,
     });
   }
 }

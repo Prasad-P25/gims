@@ -48,20 +48,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center h-20 px-4 border-b border-slate-700">
+          <div className="flex items-center justify-center h-20 px-3 border-b border-slate-700">
             <img
               src="/logo.png"
-              alt="GURUAMRUT"
-              className="h-12 w-auto"
+              alt="GURUAMRUT Infrastructure and Management Services"
+              className="h-16 w-auto object-contain"
               onError={(e) => {
                 // Fallback if logo doesn't load
                 e.currentTarget.style.display = 'none';
               }}
             />
-            <div className="ml-2">
-              <h1 className="text-lg font-bold text-brand-blue">GURUAMRUT</h1>
-              <p className="text-[10px] text-gray-400 leading-tight">Infrastructure &<br/>Management Services</p>
-            </div>
           </div>
 
           {/* Navigation */}
