@@ -2,40 +2,58 @@ import Redis, { RedisOptions } from 'ioredis';
 import { env, isDevelopment } from './env';
 import { logger } from '../utils/logger';
 
-const createRedisClient = (): Redis => {
+// Parse Redis URL and add TLS for Upstash
+const getRedisOptions = (): RedisOptions => {
   if (env.REDIS_URL) {
-    return new Redis(env.REDIS_URL);
+    const isUpstash = env.REDIS_URL.includes('upstash.io');
+    const url = new URL(env.REDIS_URL.replace('redis://', 'http://').replace('rediss://', 'https://'));
+
+    return {
+      host: url.hostname,
+      port: parseInt(url.port) || 6379,
+      password: url.password || undefined,
+      tls: isUpstash ? {} : undefined,
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: false,
+      retryStrategy: (times: number) => {
+        if (times > 3) {
+          logger.error('Redis connection failed after 3 retries');
+          return null;
+        }
+        return Math.min(times * 200, 2000);
+      },
+    };
   }
 
-  const options: RedisOptions = {
+  return {
     host: env.REDIS_HOST,
     port: env.REDIS_PORT,
     password: env.REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   };
-
-  return new Redis(options);
 };
 
-export const redis = createRedisClient();
+const redisOptions = getRedisOptions();
+export const redis = new Redis(redisOptions);
 
 redis.on('connect', () => {
   logger.info('Redis connected');
 });
 
 redis.on('ready', () => {
-  if (isDevelopment) {
-    logger.debug('Redis ready to accept commands');
-  }
+  logger.info('Redis ready');
 });
 
 redis.on('error', (err) => {
-  logger.error('Redis error:', err);
+  logger.error('Redis error:', err.message);
 });
 
 redis.on('close', () => {
-  logger.warn('Redis connection closed');
+  if (isDevelopment) {
+    logger.warn('Redis connection closed');
+  }
 });
 
 redis.on('reconnecting', () => {
@@ -57,13 +75,7 @@ export const closeRedis = async (): Promise<void> => {
   logger.info('Redis connection closed');
 };
 
-// Bull queue connection options
-export const bullRedisConfig = env.REDIS_URL
-  ? { url: env.REDIS_URL }
-  : {
-      redis: {
-        host: env.REDIS_HOST,
-        port: env.REDIS_PORT,
-        password: env.REDIS_PASSWORD || undefined,
-      },
-    };
+// Bull queue connection options - use same parsed options
+export const bullRedisConfig = {
+  redis: redisOptions,
+};
