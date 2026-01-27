@@ -26,14 +26,14 @@ const envSchema = z.object({
   // JWT
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('7d'),
-  JWT_REFRESH_SECRET: z.string().min(32),
+  JWT_REFRESH_SECRET: z.string().min(32).optional().default('default-refresh-secret-change-in-production'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
-  // WhatsApp
+  // WhatsApp (optional - can use Telegram instead)
   WHATSAPP_API_URL: z.string().url().default('https://graph.facebook.com/v18.0'),
-  WHATSAPP_PHONE_NUMBER_ID: z.string(),
-  WHATSAPP_ACCESS_TOKEN: z.string(),
-  WHATSAPP_VERIFY_TOKEN: z.string(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional().default(''),
   WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
 
   // Gemini AI
