@@ -44,16 +44,17 @@ export default function TaskForm() {
   // Update form when existing task loads
   useEffect(() => {
     if (existingTask) {
+      const taskData = existingTask.task_data as any;
       setFormData({
         category_id: existingTask.category_id?.toString() || '',
         status: existingTask.status,
         priority: existingTask.priority,
         task_data: {
-          title: existingTask.task_data?.title || '',
-          description: existingTask.task_data?.description || '',
-          applicant_name: existingTask.task_data?.applicant_name || '',
-          applicant_phone: existingTask.task_data?.applicant_phone || '',
-          due_date: existingTask.task_data?.due_date || '',
+          title: taskData?.title || '',
+          description: taskData?.description || '',
+          applicant_name: taskData?.applicant_name || '',
+          applicant_phone: taskData?.applicant_phone || '',
+          due_date: taskData?.due_date || '',
         },
       });
     }
@@ -95,13 +96,13 @@ export default function TaskForm() {
       status: formData.status,
       priority: formData.priority,
       task_data: formData.task_data,
-      input_mode: 'text',
+      input_mode: 'text' as const,
     };
 
     if (isEditing) {
-      updateMutation.mutate(payload);
+      updateMutation.mutate(payload as any);
     } else {
-      createMutation.mutate(payload);
+      createMutation.mutate(payload as any);
     }
   };
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, UserCheck, UserX, Search } from 'lucide-react';
+import { Plus, UserCheck, UserX, Search } from 'lucide-react';
 import api from '../services/api';
 import { cn } from '../lib/utils';
 

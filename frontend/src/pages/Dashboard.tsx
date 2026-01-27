@@ -87,7 +87,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="In Progress"
-          value={stats?.in_progress || 0}
+          value={stats?.inProgress || 0}
           icon={<TrendingUp className="h-6 w-6 text-purple-600" />}
           color="bg-purple-100"
         />
@@ -186,7 +186,7 @@ export default function Dashboard() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900">
-                        {task.task_data?.title || task.task_data?.subject || task.task_data?.description?.slice(0, 50) || 'Untitled Task'}
+                        {(task.task_data as any)?.title || (task.task_data as any)?.subject || String((task.task_data as any)?.description || '').slice(0, 50) || 'Untitled Task'}
                       </p>
 
                       {/* Category */}
@@ -198,9 +198,9 @@ export default function Dashboard() {
                       </div>
 
                       {/* Description snippet */}
-                      {task.task_data?.description && (
+                      {(task.task_data as any)?.description && (
                         <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                          {task.task_data.description}
+                          {String((task.task_data as any).description)}
                         </p>
                       )}
 
@@ -253,19 +253,19 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="text-center p-4 bg-primary-50 rounded-lg">
             <p className="text-3xl font-bold text-primary-600">
-              {stats?.today || 0}
+              {(stats as any)?.today || 0}
             </p>
             <p className="text-sm text-primary-700 mt-1">Registered Today</p>
           </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <p className="text-3xl font-bold text-green-600">
-              {stats?.completed_today || 0}
+              {(stats as any)?.completed_today || 0}
             </p>
             <p className="text-sm text-green-700 mt-1">Completed Today</p>
           </div>
           <div className="text-center p-4 bg-red-50 rounded-lg">
             <p className="text-3xl font-bold text-red-600">
-              {stats?.overdue || 0}
+              {(stats as any)?.overdue || 0}
             </p>
             <p className="text-sm text-red-700 mt-1">Overdue Tasks</p>
           </div>
