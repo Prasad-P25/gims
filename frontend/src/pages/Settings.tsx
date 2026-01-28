@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Bell, Globe, Database, Shield, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Save, Bell, Globe, Database, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dashboardService } from '../services/dashboard';
 
 export default function Settings() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('general');
   const [generalSettings, setGeneralSettings] = useState({

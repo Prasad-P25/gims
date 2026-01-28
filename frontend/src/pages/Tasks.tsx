@@ -28,8 +28,11 @@ export default function Tasks() {
     queryFn: () => tasksService.getTasks({
       page,
       limit: 10,
-      ...filters,
-    }),
+      status: filters.status || undefined,
+      priority: filters.priority || undefined,
+      category_id: filters.category_id ? parseInt(filters.category_id) : undefined,
+      search: filters.search || undefined,
+    } as any),
   });
 
   const { data: categories } = useQuery({
@@ -191,10 +194,10 @@ export default function Tasks() {
                     <tr key={task.registry_id} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
                         <div className="text-sm font-medium text-gray-900">
-                          {task.task_data?.title || task.task_data?.subject || 'Untitled Task'}
+                          {(task.task_data as any)?.title || (task.task_data as any)?.subject || 'Untitled Task'}
                         </div>
                         <div className="text-sm text-gray-500 truncate max-w-xs">
-                          {task.task_data?.description || task.transcription || '-'}
+                          {String((task.task_data as any)?.description || task.transcription || '-')}
                         </div>
                       </td>
                       <td className="px-4 py-4 hidden md:table-cell">

@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { Mic, Square, Loader2, AlertCircle } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
 interface VoiceRecorderProps {
   onTranscription: (data: {
     transcription: {
@@ -34,7 +36,7 @@ export default function VoiceRecorder({ onTranscription, disabled }: VoiceRecord
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startRecording = async () => {
     try {
@@ -106,7 +108,7 @@ export default function VoiceRecorder({ onTranscription, disabled }: VoiceRecord
       formData.append('audio', audioBlob, 'recording.webm');
 
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/tasks/process-voice', {
+      const response = await fetch(`${API_BASE_URL}/tasks/process-voice`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
