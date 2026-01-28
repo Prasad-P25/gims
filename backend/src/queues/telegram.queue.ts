@@ -580,11 +580,11 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 
     case '/today':
       const todayTasks = await taskService.getTodayTasks();
-      const todayStats = await taskService.getTaskStats();
 
       let todayMessage = `<b>📅 Today's Tasks</b>\n`;
       todayMessage += `━━━━━━━━━━━━━━━━━━━━\n`;
-      todayMessage += `📝 Registered: ${todayTasks.length} | ✅ Completed: ${todayStats.completedToday || 0}\n\n`;
+      const completedToday = todayTasks.filter((t: any) => t.status === 'completed').length;
+      todayMessage += `📝 Registered: ${todayTasks.length} | ✅ Completed: ${completedToday}\n\n`;
 
       if (todayTasks.length > 0) {
         todayTasks.forEach((task: any, i: number) => {
