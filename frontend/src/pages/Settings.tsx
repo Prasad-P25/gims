@@ -14,15 +14,6 @@ export default function Settings() {
     timezone: 'Asia/Kolkata',
   });
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    morning_reminder: true,
-    morning_time: '09:00',
-    evening_reminder: true,
-    evening_time: '17:00',
-    overdue_alerts: true,
-    whatsapp_notifications: true,
-  });
-
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: dashboardService.getCategories,
@@ -139,148 +130,74 @@ export default function Settings() {
           {activeTab === 'notifications' && (
             <div className="card">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Notification Settings
+                Reminder Schedule
               </h2>
-              <div className="space-y-6">
-                {/* WhatsApp Notifications */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      WhatsApp Notifications
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Enable WhatsApp message notifications
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.whatsapp_notifications}
-                      onChange={(e) =>
-                        setNotificationSettings({
-                          ...notificationSettings,
-                          whatsapp_notifications: e.target.checked,
-                        })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-
+              <p className="text-sm text-gray-500 mb-6">
+                Automated reminders are sent via WhatsApp/Telegram at the following times
+              </p>
+              <div className="space-y-4">
                 {/* Morning Reminder */}
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <span className="text-xl">🌅</span>
+                    </div>
                     <div>
                       <p className="font-medium text-gray-900">Morning Summary</p>
                       <p className="text-sm text-gray-500">
-                        Daily pending task summary
+                        Daily pending task summary for all users
                       </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.morning_reminder}
-                        onChange={(e) =>
-                          setNotificationSettings({
-                            ...notificationSettings,
-                            morning_reminder: e.target.checked,
-                          })
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                    </label>
                   </div>
-                  {notificationSettings.morning_reminder && (
-                    <div>
-                      <label className="label">Time</label>
-                      <input
-                        type="time"
-                        value={notificationSettings.morning_time}
-                        onChange={(e) =>
-                          setNotificationSettings({
-                            ...notificationSettings,
-                            morning_time: e.target.value,
-                          })
-                        }
-                        className="input w-32"
-                      />
-                    </div>
-                  )}
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-blue-600">09:00 AM</p>
+                    <p className="text-xs text-gray-500">IST</p>
+                  </div>
                 </div>
 
                 {/* Evening Reminder */}
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg border border-orange-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
+                      <span className="text-xl">🌆</span>
+                    </div>
                     <div>
                       <p className="font-medium text-gray-900">Evening Summary</p>
                       <p className="text-sm text-gray-500">
-                        End of day status report
+                        End of day status report for all users
                       </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.evening_reminder}
-                        onChange={(e) =>
-                          setNotificationSettings({
-                            ...notificationSettings,
-                            evening_reminder: e.target.checked,
-                          })
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                    </label>
                   </div>
-                  {notificationSettings.evening_reminder && (
-                    <div>
-                      <label className="label">Time</label>
-                      <input
-                        type="time"
-                        value={notificationSettings.evening_time}
-                        onChange={(e) =>
-                          setNotificationSettings({
-                            ...notificationSettings,
-                            evening_time: e.target.value,
-                          })
-                        }
-                        className="input w-32"
-                      />
-                    </div>
-                  )}
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-orange-600">06:00 PM</p>
+                    <p className="text-xs text-gray-500">IST</p>
+                  </div>
                 </div>
 
                 {/* Overdue Alerts */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Overdue Alerts</p>
-                    <p className="text-sm text-gray-500">
-                      Immediate alerts for overdue tasks
-                    </p>
+                <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                      <span className="text-xl">⚠️</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">Overdue Alerts</p>
+                      <p className="text-sm text-gray-500">
+                        Immediate alerts when tasks become overdue
+                      </p>
+                    </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.overdue_alerts}
-                      onChange={(e) =>
-                        setNotificationSettings({
-                          ...notificationSettings,
-                          overdue_alerts: e.target.checked,
-                        })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-red-600">Real-time</p>
+                    <p className="text-xs text-gray-500">As needed</p>
+                  </div>
                 </div>
 
-                <div className="pt-4">
-                  <button className="btn-primary inline-flex items-center">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </button>
+                {/* Info Note */}
+                <div className="p-4 bg-gray-100 rounded-lg mt-6">
+                  <p className="text-sm text-gray-600">
+                    <strong>Note:</strong> Reminders are automatically sent to all active users via WhatsApp or Telegram based on their registered contact. Contact administrator to modify reminder schedules.
+                  </p>
                 </div>
               </div>
             </div>

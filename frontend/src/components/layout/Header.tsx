@@ -11,7 +11,7 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-      <div className="flex items-center justify-between h-16 px-4 sm:px-6">
+      <div className="flex items-center justify-between h-20 px-4 sm:px-6">
         {/* Left side */}
         <div className="flex items-center">
           <button
@@ -20,11 +20,13 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
           >
             <Menu className="h-6 w-6" />
           </button>
-          {title && (
-            <h1 className="ml-4 text-xl font-semibold text-gray-900 lg:ml-0">
-              {title}
-            </h1>
-          )}
+        </div>
+
+        {/* Center - Title */}
+        <div className="absolute left-1/2 transform -translate-x-1/2">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-wider whitespace-nowrap">
+            GIMS TASK REGISTRY
+          </h1>
         </div>
 
         {/* Right side - User info */}
