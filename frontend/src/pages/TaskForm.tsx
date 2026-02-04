@@ -1,21 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, Loader2, Mic } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Mic, Paperclip, UserPlus } from 'lucide-react';
 import { tasksService } from '../services/tasks';
 import { dashboardService } from '../services/dashboard';
+import { useAuth } from '../context/AuthContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+import FileUpload from '../components/FileUpload';
+import AttachmentList from '../components/AttachmentList';
 
 export default function TaskForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const isEditing = Boolean(id);
+  const canAssign = user?.role === 'admin' || user?.role === 'super_admin';
 
   const [formData, setFormData] = useState({
     category_id: '',
     status: 'pending',
     priority: 'medium',
+    assigned_to: '',
     task_data: {
       title: '',
       description: '',
@@ -34,10 +40,24 @@ export default function TaskForm() {
     queryFn: dashboardService.getCategories,
   });
 
+  // Fetch assignable users (for admins/super_admins)
+  const { data: assignableUsers = [] } = useQuery({
+    queryKey: ['assignable-users'],
+    queryFn: tasksService.getAssignableUsers,
+    enabled: canAssign,
+  });
+
   // Fetch existing task if editing
   const { data: existingTask, isLoading: taskLoading } = useQuery({
     queryKey: ['task', id],
     queryFn: () => tasksService.getTask(id!),
+    enabled: isEditing,
+  });
+
+  // Fetch attachments if editing
+  const { data: attachments = [], refetch: refetchAttachments } = useQuery({
+    queryKey: ['attachments', id],
+    queryFn: () => tasksService.getAttachments(id!),
     enabled: isEditing,
   });
 
@@ -49,6 +69,7 @@ export default function TaskForm() {
         category_id: existingTask.category_id?.toString() || '',
         status: existingTask.status,
         priority: existingTask.priority,
+        assigned_to: existingTask.assigned_to || '',
         task_data: {
           title: taskData?.title || '',
           description: taskData?.description || '',
@@ -91,7 +112,7 @@ export default function TaskForm() {
     e.preventDefault();
     setError('');
 
-    const payload = {
+    const payload: any = {
       category_id: parseInt(formData.category_id),
       status: formData.status,
       priority: formData.priority,
@@ -99,10 +120,18 @@ export default function TaskForm() {
       input_mode: 'text' as const,
     };
 
+    // Include assigned_to if set (for admins/super_admins)
+    if (canAssign && formData.assigned_to) {
+      payload.assigned_to = formData.assigned_to;
+    } else if (canAssign && !formData.assigned_to && isEditing) {
+      // Clear assignment if empty when editing
+      payload.assigned_to = null;
+    }
+
     if (isEditing) {
-      updateMutation.mutate(payload as any);
+      updateMutation.mutate(payload);
     } else {
-      createMutation.mutate(payload as any);
+      createMutation.mutate(payload);
     }
   };
 
@@ -149,6 +178,20 @@ export default function TaskForm() {
   };
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
+
+  // Handle file upload
+  const handleFileUpload = async (files: File[]) => {
+    if (!id) return;
+    await tasksService.uploadAttachments(id, files);
+    refetchAttachments();
+  };
+
+  // Handle attachment delete
+  const handleAttachmentDelete = async (attachmentId: string) => {
+    if (!id) return;
+    await tasksService.deleteAttachment(id, attachmentId);
+    refetchAttachments();
+  };
 
   if (isEditing && taskLoading) {
     return (
@@ -286,6 +329,33 @@ export default function TaskForm() {
           </div>
         </div>
 
+        {/* Assign To - Only visible for admins and super_admins */}
+        {canAssign && assignableUsers.length > 0 && (
+          <div>
+            <label className="label flex items-center gap-2">
+              <UserPlus className="h-4 w-4" />
+              {user?.role === 'super_admin' ? 'Assign to Admin' : 'Assign to Member'}
+            </label>
+            <select
+              value={formData.assigned_to}
+              onChange={(e) => handleChange('assigned_to', e.target.value)}
+              className="input"
+            >
+              <option value="">-- Unassigned --</option>
+              {assignableUsers.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.name}{u.team_name ? ` (${u.team_name})` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {user?.role === 'super_admin'
+                ? 'Assign to an admin who will delegate to team members.'
+                : 'Assign this task to a team member.'}
+            </p>
+          </div>
+        )}
+
         {/* Applicant Info */}
         <div className="border-t pt-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -328,6 +398,31 @@ export default function TaskForm() {
             className="input"
           />
         </div>
+
+        {/* Attachments Section - Only show when editing */}
+        {isEditing && (
+          <div className="border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Paperclip className="h-5 w-5 text-gray-500" />
+              <h3 className="text-lg font-medium text-gray-900">Attachments</h3>
+              {attachments.length > 0 && (
+                <span className="text-sm text-gray-500">({attachments.length})</span>
+              )}
+            </div>
+
+            {/* File Upload */}
+            <div className="mb-4">
+              <FileUpload onUpload={handleFileUpload} disabled={isSubmitting} />
+            </div>
+
+            {/* Attachment List */}
+            <AttachmentList
+              attachments={attachments}
+              taskId={id!}
+              onDelete={handleAttachmentDelete}
+            />
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex justify-end space-x-3 pt-4 border-t">

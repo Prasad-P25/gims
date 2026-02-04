@@ -29,13 +29,13 @@ router.post(
   asyncHandler((req, res) => authController.logout(req as AuthenticatedRequest, res))
 );
 
-// POST /api/auth/register - Register new user (admin only)
+// POST /api/auth/register - Register new user (admin and super_admin)
 router.post(
   '/register',
   authenticate,
-  authorize('admin'),
+  authorize('admin', 'super_admin'),
   validateBody(userCreateSchema),
-  asyncHandler((req, res) => authController.register(req, res))
+  asyncHandler((req, res) => authController.register(req as AuthenticatedRequest, res))
 );
 
 // GET /api/auth/me - Get current user profile
@@ -59,20 +59,28 @@ router.post(
   asyncHandler((req, res) => authController.changePassword(req as AuthenticatedRequest, res))
 );
 
-// GET /api/auth/users - Get all users (admin only)
+// GET /api/auth/users - Get all users (admin and super_admin)
 router.get(
   '/users',
   authenticate,
-  authorize('admin'),
+  authorize('admin', 'super_admin'),
   asyncHandler((req, res) => authController.getUsers(req as AuthenticatedRequest, res))
 );
 
-// PATCH /api/auth/users/:userId/toggle-status - Toggle user active status (admin only)
+// PATCH /api/auth/users/:userId/toggle-status - Toggle user active status (admin and super_admin)
 router.patch(
   '/users/:userId/toggle-status',
   authenticate,
-  authorize('admin'),
+  authorize('admin', 'super_admin'),
   asyncHandler((req, res) => authController.toggleUserStatus(req as AuthenticatedRequest, res))
+);
+
+// PUT /api/auth/users/:userId - Update user details (admin and super_admin)
+router.put(
+  '/users/:userId',
+  authenticate,
+  authorize('admin', 'super_admin'),
+  asyncHandler((req, res) => authController.updateUser(req as AuthenticatedRequest, res))
 );
 
 export default router;

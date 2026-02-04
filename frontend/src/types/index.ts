@@ -1,5 +1,17 @@
+// Team types
+export interface Team {
+  team_id: string;
+  name: string;
+  description?: string;
+  admin_id?: string;
+  admin_name?: string;
+  is_active: boolean;
+  member_count?: number;
+  created_at: string;
+}
+
 // User types
-export type UserRole = 'admin' | 'supervisor';
+export type UserRole = 'super_admin' | 'admin' | 'member';
 
 export interface User {
   user_id: string;
@@ -7,6 +19,8 @@ export interface User {
   phone: string;
   email?: string;
   role: UserRole;
+  team_id?: string;
+  team_name?: string;
   preferred_language: 'marathi' | 'english' | 'hindi';
 }
 
@@ -50,6 +64,7 @@ export interface Task {
   registry_id: string;
   category_id: number;
   registered_by: string;
+  assigned_to?: string;
   registration_date: string;
   registration_time: string;
   task_data: Record<string, unknown>;
@@ -66,6 +81,14 @@ export interface Task {
   category_name_english?: string;
   category_name_marathi?: string;
   registered_by_name?: string;
+  assigned_to_name?: string;
+}
+
+export interface AssignableUser {
+  user_id: string;
+  name: string;
+  role: string;
+  team_name?: string;
 }
 
 export interface TaskCreateInput {
@@ -74,6 +97,7 @@ export interface TaskCreateInput {
   input_mode: InputMode;
   input_language?: string;
   priority?: TaskPriority;
+  assigned_to?: string;
 }
 
 export interface TaskUpdateInput {
@@ -81,12 +105,14 @@ export interface TaskUpdateInput {
   task_data?: Record<string, unknown>;
   status?: TaskStatus;
   priority?: TaskPriority;
+  assigned_to?: string | null;
 }
 
 export interface TaskFilters {
   category_id?: number;
   status?: TaskStatus;
   priority?: TaskPriority;
+  assigned_to?: string;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -124,6 +150,21 @@ export interface PaginationMeta {
 export interface PaginatedResponse<T> {
   tasks: T[];
   meta: PaginationMeta;
+}
+
+// Attachment types
+export interface Attachment {
+  attachment_id: string;
+  registry_id: string;
+  file_name: string;
+  stored_name: string;
+  file_path: string;
+  file_type: string;
+  file_size_bytes: number;
+  uploaded_by: string;
+  uploaded_by_name?: string;
+  upload_source: 'web' | 'telegram' | 'whatsapp';
+  created_at: string;
 }
 
 // Report types

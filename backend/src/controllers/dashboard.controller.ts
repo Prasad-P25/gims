@@ -6,39 +6,67 @@ import { AuthenticatedRequest } from '../types';
 export class DashboardController {
   /**
    * Get dashboard statistics
+   * Role-based: members see only their own tasks
    */
   async getStats(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const stats = await taskService.getTaskStats();
-    const todayTasks = await taskService.getTodaysTasks();
+    const user = req.user!;
+    const userContext = {
+      user_id: user.user_id,
+      role: user.role,
+      team_id: user.team_id,
+    };
+
+    // Get stats filtered by user role
+    const { tasks, meta } = await taskService.getTasks({}, { page: 1, limit: 1000 }, userContext);
+
+    const total = meta.total;
+    const pending = tasks.filter(t => t.status === 'pending').length;
+    const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+    const completed = tasks.filter(t => t.status === 'completed').length;
+    const cancelled = tasks.filter(t => t.status === 'cancelled').length;
+
+    const today = new Date().toISOString().split('T')[0];
+    const todayTasks = tasks.filter(t => t.registration_date?.toString().startsWith(today));
+    const completedToday = todayTasks.filter(t => t.status === 'completed').length;
 
     sendSuccess(res, {
-      total: stats.total,
-      pending: stats.pending,
-      in_progress: stats.inProgress,
-      completed: stats.completed,
-      cancelled: stats.cancelled,
+      total,
+      pending,
+      in_progress: inProgress,
+      completed,
+      cancelled,
       today: todayTasks.length,
-      completed_today: todayTasks.filter(t => t.status === 'completed').length,
-      overdue: stats.pending, // Tasks pending > 24h would be overdue
+      completed_today: completedToday,
+      overdue: pending, // Tasks pending would be considered for overdue
     });
   }
 
   /**
    * Get category breakdown
+   * Role-based: members see only their own tasks per category
    */
   async getCategoryBreakdown(req: AuthenticatedRequest, res: Response): Promise<void> {
-    // Get all categories with their task counts
-    const categories = await taskService.getCategories();
-    const stats = await taskService.getTaskStats();
+    const user = req.user!;
+    const userContext = {
+      user_id: user.user_id,
+      role: user.role,
+      team_id: user.team_id,
+    };
 
-    // Map categories with task counts
+    // Get all categories
+    const categories = await taskService.getCategories();
+
+    // Get tasks filtered by user role
+    const { tasks } = await taskService.getTasks({}, { page: 1, limit: 1000 }, userContext);
+
+    // Count tasks per category from filtered tasks
     const categoryStats = categories.map(cat => {
-      const statEntry = stats.byCategory.find(s => s.category_id === cat.category_id);
+      const taskCount = tasks.filter(t => t.category_id === cat.category_id).length;
       return {
         category_id: cat.category_id,
         name_english: cat.name_english,
         name_marathi: cat.name_marathi,
-        task_count: statEntry?.count || 0,
+        task_count: taskCount,
       };
     });
 
@@ -47,13 +75,21 @@ export class DashboardController {
 
   /**
    * Get recent tasks
+   * Role-based: members see only their own tasks
    */
   async getRecentTasks(req: AuthenticatedRequest, res: Response): Promise<void> {
     const limit = Number(req.query.limit) || 10;
+    const user = req.user!;
+    const userContext = {
+      user_id: user.user_id,
+      role: user.role,
+      team_id: user.team_id,
+    };
 
     const { tasks } = await taskService.getTasks(
       {},
-      { page: 1, limit, sortBy: 'created_at', sortOrder: 'desc' }
+      { page: 1, limit, sortBy: 'created_at', sortOrder: 'desc' },
+      userContext
     );
 
     sendSuccess(res, { tasks });

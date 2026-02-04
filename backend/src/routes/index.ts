@@ -5,6 +5,11 @@ import taskRoutes from './task.routes';
 import dashboardRoutes from './dashboard.routes';
 import reportRoutes from './report.routes';
 import reminderRoutes from './reminder.routes';
+import teamRoutes from './team.routes';
+import auditRoutes from './audit.routes';
+import notificationRoutes from './notification.routes';
+import teamStatsRoutes from './teamStats.routes';
+import profileRoutes from './profile.routes';
 
 const router = Router();
 
@@ -26,5 +31,10 @@ router.use('/tasks', taskRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/reports', reportRoutes);
 router.use('/reminders', reminderRoutes);
+router.use('/teams', teamRoutes);
+router.use('/audit', auditRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/team-stats', teamStatsRoutes);
+router.use('/profile', profileRoutes);
 
 export default router;

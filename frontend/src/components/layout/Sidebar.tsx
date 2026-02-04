@@ -5,7 +5,11 @@ import {
   FileText,
   Settings,
   Users,
+  UsersRound,
+  History,
   LogOut,
+  BarChart3,
+  UserCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -16,9 +20,21 @@ const navigation = [
   { name: 'Reports', href: '/reports', icon: FileText },
 ];
 
+// For admin only
+const adminOnlyNavigation = [
+  { name: 'My Team', href: '/team-dashboard', icon: BarChart3 },
+];
+
+// For admin and super_admin
 const adminNavigation = [
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
+];
+
+// Only for super_admin
+const superAdminNavigation = [
+  { name: 'Teams', href: '/teams', icon: UsersRound },
+  { name: 'Activity Log', href: '/audit', icon: History },
 ];
 
 interface SidebarProps {
@@ -89,14 +105,51 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </NavLink>
               ))}
 
-              {user?.role === 'admin' && (
+              {(user?.role === 'admin' || user?.role === 'super_admin') && (
                 <>
                   <div className="pt-4 mt-4 border-t border-slate-700">
                     <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Admin
+                      Management
                     </p>
                   </div>
+                  {/* Admin Only - Team Dashboard */}
+                  {user?.role === 'admin' && adminOnlyNavigation.map((item) => (
+                    <NavLink
+                      key={item.name}
+                      to={item.href}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors',
+                          isActive
+                            ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30'
+                            : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                        )
+                      }
+                    >
+                      <item.icon className="mr-3 h-5 w-5" />
+                      {item.name}
+                    </NavLink>
+                  ))}
                   {adminNavigation.map((item) => (
+                    <NavLink
+                      key={item.name}
+                      to={item.href}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors',
+                          isActive
+                            ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30'
+                            : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                        )
+                      }
+                    >
+                      <item.icon className="mr-3 h-5 w-5" />
+                      {item.name}
+                    </NavLink>
+                  ))}
+                  {user?.role === 'super_admin' && superAdminNavigation.map((item) => (
                     <NavLink
                       key={item.name}
                       to={item.href}
@@ -131,6 +184,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
                 </div>
               </div>
+              <NavLink
+                to="/profile"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1',
+                    isActive
+                      ? 'bg-brand-blue text-white'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  )
+                }
+              >
+                <UserCircle className="mr-3 h-5 w-5" />
+                Profile
+              </NavLink>
               <button
                 onClick={logout}
                 className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"

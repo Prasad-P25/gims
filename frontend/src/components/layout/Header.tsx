@@ -1,12 +1,13 @@
 import { Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from '../NotificationBell';
 
 interface HeaderProps {
   onMenuClick: () => void;
   title?: string;
 }
 
-export default function Header({ onMenuClick, title }: HeaderProps) {
+export default function Header({ onMenuClick, title: _title }: HeaderProps) {
   const { user } = useAuth();
 
   return (
@@ -29,14 +30,18 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
           </h1>
         </div>
 
-        {/* Right side - User info */}
-        <div className="flex items-center">
+        {/* Right side - Notifications & User info */}
+        <div className="flex items-center gap-2">
+          {/* Notification Bell */}
+          <NotificationBell />
+
+          {/* User Avatar */}
           <div className="h-9 w-9 rounded-full bg-gradient-to-br from-brand-blue to-brand-green flex items-center justify-center">
             <span className="text-white font-semibold text-sm">
               {user?.name?.charAt(0).toUpperCase()}
             </span>
           </div>
-          <div className="ml-3 hidden sm:block">
+          <div className="ml-1 hidden sm:block">
             <p className="text-sm font-medium text-gray-900">{user?.name}</p>
             <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
           </div>

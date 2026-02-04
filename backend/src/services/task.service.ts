@@ -9,6 +9,7 @@ import {
   PaginationMeta,
   Category,
   VoiceMessage,
+  UserContext,
 } from '../types';
 
 export class TaskService {
@@ -21,15 +22,16 @@ export class TaskService {
   ): Promise<TaskRegistry> {
     const sql = `
       INSERT INTO task_registry (
-        category_id, registered_by, task_data, input_mode, input_source,
+        category_id, registered_by, assigned_to, task_data, input_mode, input_source,
         input_language, original_input, transcription, priority
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
     const values = [
       input.category_id,
       userId,
+      input.assigned_to || null,
       JSON.stringify(input.task_data),
       input.input_mode,
       input.input_source || 'web',
@@ -40,7 +42,7 @@ export class TaskService {
     ];
 
     const result = await query<TaskRegistry>(sql, values);
-    logger.info('Task created', { registryId: result.rows[0].registry_id, userId });
+    logger.info('Task created', { registryId: result.rows[0].registry_id, userId, assignedTo: input.assigned_to });
     return result.rows[0];
   }
 
@@ -87,10 +89,15 @@ export class TaskService {
 
   /**
    * Get tasks with filters and pagination
+   * Role-based filtering:
+   * - super_admin: sees all tasks
+   * - admin: sees all tasks from their team
+   * - member: sees only their own tasks
    */
   async getTasks(
     filters: TaskFilters,
-    pagination: PaginationParams
+    pagination: PaginationParams,
+    userContext?: UserContext
   ): Promise<{ tasks: TaskRegistry[]; meta: PaginationMeta }> {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
     const offset = (page - 1) * limit;
@@ -99,6 +106,25 @@ export class TaskService {
     const conditions: string[] = ['tr.deleted_at IS NULL'];
     const values: unknown[] = [];
     let paramIndex = 1;
+
+    // Role-based filtering
+    if (userContext) {
+      if (userContext.role === 'member') {
+        // Members see tasks they created OR tasks assigned to them
+        conditions.push(`(tr.registered_by = $${paramIndex} OR tr.assigned_to = $${paramIndex})`);
+        values.push(userContext.user_id);
+        paramIndex++;
+      } else if (userContext.role === 'admin' && userContext.team_id) {
+        // Admins see all tasks from their team members (created by OR assigned to)
+        conditions.push(`(
+          tr.registered_by IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL)
+          OR tr.assigned_to IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL)
+        )`);
+        values.push(userContext.team_id);
+        paramIndex++;
+      }
+      // super_admin sees all tasks (no filter needed)
+    }
 
     if (filters.category_id) {
       conditions.push(`tr.category_id = $${paramIndex++}`);
@@ -118,6 +144,18 @@ export class TaskService {
     if (filters.registered_by) {
       conditions.push(`tr.registered_by = $${paramIndex++}`);
       values.push(filters.registered_by);
+    }
+
+    if (filters.assigned_to) {
+      conditions.push(`tr.assigned_to = $${paramIndex++}`);
+      values.push(filters.assigned_to);
+    }
+
+    if (filters.team_id) {
+      conditions.push(`tr.registered_by IN (
+        SELECT user_id FROM users WHERE team_id = $${paramIndex++} AND deleted_at IS NULL
+      )`);
+      values.push(filters.team_id);
     }
 
     if (filters.date_from) {
@@ -162,10 +200,12 @@ export class TaskService {
         tr.*,
         c.name_english as category_name_english,
         c.name_marathi as category_name_marathi,
-        u.name as registered_by_name
+        u.name as registered_by_name,
+        ua.name as assigned_to_name
       FROM task_registry tr
       JOIN categories c ON tr.category_id = c.category_id
       LEFT JOIN users u ON tr.registered_by = u.user_id
+      LEFT JOIN users ua ON tr.assigned_to = ua.user_id
       WHERE ${whereClause}
       ORDER BY tr.${safeSortBy} ${safeSortOrder}
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -215,6 +255,11 @@ export class TaskService {
     if (input.priority !== undefined) {
       updates.push(`priority = $${paramIndex++}`);
       values.push(input.priority);
+    }
+
+    if (input.assigned_to !== undefined) {
+      updates.push(`assigned_to = $${paramIndex++}`);
+      values.push(input.assigned_to);
     }
 
     if (updates.length === 0) {
@@ -517,6 +562,51 @@ export class TaskService {
     const sql = 'SELECT * FROM categories WHERE category_id = $1';
     const result = await query<Category>(sql, [categoryId]);
     return result.rows[0] || null;
+  }
+
+  /**
+   * Get users that can be assigned tasks
+   * - super_admin: can assign to admins only (they will delegate to members)
+   * - admin: can assign to their team members only
+   * - member: cannot assign (returns empty array)
+   */
+  async getAssignableUsers(userContext: UserContext): Promise<Array<{ user_id: string; name: string; role: string; team_name?: string }>> {
+    if (userContext.role === 'member') {
+      return [];
+    }
+
+    let sql: string;
+    let params: unknown[] = [];
+
+    if (userContext.role === 'super_admin') {
+      // Super admin can assign to admins only (hierarchical delegation)
+      sql = `
+        SELECT u.user_id, u.name, u.role, t.name as team_name
+        FROM users u
+        LEFT JOIN teams t ON u.team_id = t.team_id
+        WHERE u.role = 'admin'
+          AND u.deleted_at IS NULL
+          AND u.is_active = true
+        ORDER BY t.name, u.name
+      `;
+    } else if (userContext.role === 'admin' && userContext.team_id) {
+      // Admin can assign to their team members only
+      sql = `
+        SELECT user_id, name, role
+        FROM users
+        WHERE team_id = $1
+          AND role = 'member'
+          AND deleted_at IS NULL
+          AND is_active = true
+        ORDER BY name
+      `;
+      params = [userContext.team_id];
+    } else {
+      return [];
+    }
+
+    const result = await query<{ user_id: string; name: string; role: string; team_name?: string }>(sql, params);
+    return result.rows;
   }
 }
 

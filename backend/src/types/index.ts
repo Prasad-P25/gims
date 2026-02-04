@@ -1,7 +1,34 @@
 import { Request } from 'express';
 
+// Team types
+export interface Team {
+  team_id: string;
+  name: string;
+  description?: string;
+  admin_id?: string;
+  admin_name?: string;
+  is_active: boolean;
+  member_count?: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at?: Date;
+}
+
+export interface TeamCreateInput {
+  name: string;
+  description?: string;
+  admin_id?: string;
+}
+
+export interface TeamUpdateInput {
+  name?: string;
+  description?: string;
+  admin_id?: string;
+  is_active?: boolean;
+}
+
 // User types
-export type UserRole = 'admin' | 'supervisor';
+export type UserRole = 'super_admin' | 'admin' | 'member';
 export type PreferredLanguage = 'marathi' | 'english' | 'hindi';
 
 export interface User {
@@ -11,6 +38,8 @@ export interface User {
   email?: string;
   password_hash?: string;
   role: UserRole;
+  team_id?: string;
+  team_name?: string;
   preferred_language: PreferredLanguage;
   telegram_id?: number;
   is_active: boolean;
@@ -25,6 +54,7 @@ export interface UserCreateInput {
   email?: string;
   password?: string;
   role: UserRole;
+  team_id?: string;
   preferred_language?: PreferredLanguage;
 }
 
@@ -58,6 +88,8 @@ export interface TaskRegistry {
   category_id: number;
   registered_by: string;
   registered_by_name?: string;
+  assigned_to?: string;
+  assigned_to_name?: string;
   registration_date: Date;
   registration_time: string;
   task_data: Record<string, unknown>;
@@ -82,6 +114,7 @@ export interface TaskCreateInput {
   original_input?: string;
   transcription?: string;
   priority?: TaskPriority;
+  assigned_to?: string;
 }
 
 export interface TaskUpdateInput {
@@ -89,6 +122,7 @@ export interface TaskUpdateInput {
   task_data?: Record<string, unknown>;
   status?: TaskStatus;
   priority?: TaskPriority;
+  assigned_to?: string | null;
 }
 
 export interface TaskFilters {
@@ -96,9 +130,18 @@ export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
   registered_by?: string;
+  assigned_to?: string;
+  team_id?: string;
   date_from?: Date;
   date_to?: Date;
   search?: string;
+}
+
+// User context for role-based filtering
+export interface UserContext {
+  user_id: string;
+  role: UserRole;
+  team_id?: string;
 }
 
 // Voice message types
@@ -221,6 +264,7 @@ export interface AuthPayload {
   user_id: string;
   phone: string;
   role: UserRole;
+  team_id?: string;
 }
 
 export interface AuthTokens {
@@ -244,6 +288,34 @@ export interface DashboardStats {
     count: number;
   }>;
   recentTasks: TaskRegistry[];
+}
+
+// Attachment types
+export type UploadSource = 'web' | 'telegram' | 'whatsapp';
+
+export interface Attachment {
+  attachment_id: string;
+  registry_id: string;
+  file_name: string;
+  stored_name: string;
+  file_path: string;
+  file_type: string;
+  file_size_bytes: number;
+  uploaded_by: string;
+  uploaded_by_name?: string;
+  upload_source: UploadSource;
+  created_at: Date;
+  deleted_at?: Date;
+}
+
+export interface AttachmentCreateInput {
+  registry_id: string;
+  file_name: string;
+  stored_name: string;
+  file_path: string;
+  file_type: string;
+  file_size_bytes: number;
+  upload_source?: UploadSource;
 }
 
 // Report types

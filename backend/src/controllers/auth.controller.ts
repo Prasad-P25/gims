@@ -45,6 +45,7 @@ export class AuthController {
       user_id: user.user_id,
       phone: user.phone,
       role: user.role,
+      team_id: user.team_id,
     };
 
     const tokens = generateTokens(payload);
@@ -58,6 +59,7 @@ export class AuthController {
         phone: user.phone,
         email: user.email,
         role: user.role,
+        team_id: user.team_id,
         preferred_language: user.preferred_language,
       },
       ...tokens,
@@ -84,10 +86,12 @@ export class AuthController {
         return;
       }
 
+      const user = result.rows[0];
       const newPayload: AuthPayload = {
-        user_id: payload.user_id,
-        phone: payload.phone,
-        role: payload.role,
+        user_id: user.user_id,
+        phone: user.phone,
+        role: user.role,
+        team_id: user.team_id,
       };
 
       const tokens = generateTokens(newPayload);
@@ -100,8 +104,9 @@ export class AuthController {
   /**
    * Register new user (admin only)
    */
-  async register(req: Request, res: Response): Promise<void> {
-    const { name, phone, email, password, role, preferred_language } = req.body;
+  async register(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const { name, phone, email, password, role, team_id, preferred_language } = req.body;
+    const currentUser = req.user;
 
     // Check if phone already exists
     const existing = await query(
@@ -114,6 +119,19 @@ export class AuthController {
       return;
     }
 
+    // Determine team_id based on who is creating the user
+    let assignedTeamId = team_id;
+
+    // If admin is creating a user, assign to admin's team automatically
+    if (currentUser?.role === 'admin' && currentUser.team_id) {
+      assignedTeamId = currentUser.team_id;
+      // Admin can only create members
+      if (role !== 'member') {
+        sendBadRequest(res, 'Admin can only create member users');
+        return;
+      }
+    }
+
     // Hash password if provided
     let passwordHash: string | null = null;
     if (password) {
@@ -121,13 +139,13 @@ export class AuthController {
     }
 
     const result = await query<User>(
-      `INSERT INTO users (name, phone, email, password_hash, role, preferred_language)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING user_id, name, phone, email, role, preferred_language, is_active, created_at`,
-      [name, phone, email || null, passwordHash, role, preferred_language || 'marathi']
+      `INSERT INTO users (name, phone, email, password_hash, role, team_id, preferred_language)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING user_id, name, phone, email, role, team_id, preferred_language, is_active, created_at`,
+      [name, phone, email || null, passwordHash, role, assignedTeamId || null, preferred_language || 'marathi']
     );
 
-    logger.info('User registered', { userId: result.rows[0].user_id });
+    logger.info('User registered', { userId: result.rows[0].user_id, teamId: assignedTeamId });
 
     sendCreated(res, result.rows[0], 'User registered successfully');
   }
@@ -226,15 +244,45 @@ export class AuthController {
   }
 
   /**
-   * Get all users (admin only)
+   * Get all users
+   * - super_admin: all users
+   * - admin: only their team members
    */
   async getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const result = await query<User>(
-      `SELECT user_id, name, phone, email, role, preferred_language, is_active, created_at
-       FROM users WHERE deleted_at IS NULL
-       ORDER BY created_at DESC`
-    );
+    const currentUser = req.user;
 
+    let sql: string;
+    let params: unknown[] = [];
+
+    if (currentUser?.role === 'super_admin') {
+      // Super admin sees all users
+      sql = `
+        SELECT u.user_id, u.name, u.phone, u.email, u.role, u.team_id,
+               u.preferred_language, u.is_active, u.created_at,
+               t.name as team_name
+        FROM users u
+        LEFT JOIN teams t ON u.team_id = t.team_id
+        WHERE u.deleted_at IS NULL
+        ORDER BY u.created_at DESC
+      `;
+    } else if (currentUser?.role === 'admin' && currentUser.team_id) {
+      // Admin sees only their team members
+      sql = `
+        SELECT u.user_id, u.name, u.phone, u.email, u.role, u.team_id,
+               u.preferred_language, u.is_active, u.created_at,
+               t.name as team_name
+        FROM users u
+        LEFT JOIN teams t ON u.team_id = t.team_id
+        WHERE u.team_id = $1 AND u.deleted_at IS NULL
+        ORDER BY u.created_at DESC
+      `;
+      params = [currentUser.team_id];
+    } else {
+      sendSuccess(res, []);
+      return;
+    }
+
+    const result = await query<User>(sql, params);
     sendSuccess(res, result.rows);
   }
 
@@ -259,6 +307,107 @@ export class AuthController {
 
     logger.info('User status toggled', { userId, isActive: result.rows[0].is_active });
     sendSuccess(res, result.rows[0], `User ${result.rows[0].is_active ? 'activated' : 'deactivated'} successfully`);
+  }
+
+  /**
+   * Update user details (admin/super_admin only)
+   */
+  async updateUser(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const { userId } = req.params;
+    const { name, phone, email, role, team_id, preferred_language, password } = req.body;
+    const currentUser = req.user;
+
+    // Check if user exists
+    const existing = await query<User>(
+      'SELECT * FROM users WHERE user_id = $1 AND deleted_at IS NULL',
+      [userId]
+    );
+
+    if (!existing.rows[0]) {
+      sendNotFound(res, 'User not found');
+      return;
+    }
+
+    const targetUser = existing.rows[0];
+
+    // Admins can only edit members in their own team
+    if (currentUser?.role === 'admin') {
+      if (targetUser.team_id !== currentUser.team_id) {
+        sendBadRequest(res, 'You can only edit users in your own team');
+        return;
+      }
+      if (role && role !== 'member') {
+        sendBadRequest(res, 'Admins can only assign member role');
+        return;
+      }
+    }
+
+    // Check phone uniqueness if changed
+    if (phone && phone !== targetUser.phone) {
+      const phoneExists = await query(
+        'SELECT 1 FROM users WHERE phone = $1 AND user_id != $2',
+        [phone, userId]
+      );
+      if (phoneExists.rows.length > 0) {
+        sendBadRequest(res, 'Phone number already in use');
+        return;
+      }
+    }
+
+    // Build update query dynamically
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${paramIndex++}`);
+      values.push(phone);
+    }
+    if (email !== undefined) {
+      updates.push(`email = $${paramIndex++}`);
+      values.push(email || null);
+    }
+    if (role !== undefined && currentUser?.role === 'super_admin') {
+      updates.push(`role = $${paramIndex++}`);
+      values.push(role);
+    }
+    if (team_id !== undefined && currentUser?.role === 'super_admin') {
+      updates.push(`team_id = $${paramIndex++}`);
+      values.push(team_id || null);
+    }
+    if (preferred_language !== undefined) {
+      updates.push(`preferred_language = $${paramIndex++}`);
+      values.push(preferred_language);
+    }
+    if (password) {
+      const passwordHash = await bcrypt.hash(password, 10);
+      updates.push(`password_hash = $${paramIndex++}`);
+      values.push(passwordHash);
+    }
+
+    if (updates.length === 0) {
+      sendBadRequest(res, 'No fields to update');
+      return;
+    }
+
+    updates.push('updated_at = NOW()');
+    values.push(userId);
+
+    const sql = `
+      UPDATE users
+      SET ${updates.join(', ')}
+      WHERE user_id = $${paramIndex} AND deleted_at IS NULL
+      RETURNING user_id, name, phone, email, role, team_id, preferred_language, is_active, created_at
+    `;
+
+    const result = await query<User>(sql, values);
+
+    logger.info('User updated', { userId, updatedBy: currentUser?.user_id });
+    sendSuccess(res, result.rows[0], 'User updated successfully');
   }
 }
 

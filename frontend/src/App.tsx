@@ -9,7 +9,11 @@ import TaskForm from './pages/TaskForm';
 import Reports from './pages/Reports';
 import Reminders from './pages/Reminders';
 import Users from './pages/Users';
+import Teams from './pages/Teams';
+import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
+import TeamDashboard from './pages/TeamDashboard';
+import Profile from './pages/Profile';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,7 +41,11 @@ function App() {
               <Route path="reports" element={<Reports />} />
               <Route path="reminders" element={<Reminders />} />
               <Route path="users" element={<Users />} />
+              <Route path="teams" element={<Teams />} />
+              <Route path="team-dashboard" element={<TeamDashboard />} />
+              <Route path="audit" element={<AuditLog />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="profile" element={<Profile />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

@@ -94,7 +94,7 @@ export default function Reminders() {
             Schedule New Reminder
           </h2>
           <p className="text-sm text-gray-500 mb-4">
-            Reminders are sent via WhatsApp to supervisors. Configure reminder
+            Reminders are sent via WhatsApp to super admins. Configure reminder
             settings below.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

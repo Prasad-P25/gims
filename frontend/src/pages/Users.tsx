@@ -1,22 +1,31 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, UserCheck, UserX, Search } from 'lucide-react';
+import { Plus, UserCheck, UserX, Search, Edit2 } from 'lucide-react';
 import api from '../services/api';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
 interface User {
   user_id: string;
   name: string;
   phone: string;
   email: string | null;
-  role: 'admin' | 'supervisor';
+  role: 'super_admin' | 'admin' | 'member';
+  team_id?: string;
+  team_name?: string;
   preferred_language: string;
   is_active: boolean;
   created_at: string;
 }
 
+interface Team {
+  team_id: string;
+  name: string;
+}
+
 export default function Users() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [search, setSearch] = useState('');
@@ -24,7 +33,8 @@ export default function Users() {
     name: '',
     phone: '',
     email: '',
-    role: 'supervisor',
+    role: 'member',
+    team_id: '',
     password: '',
     preferred_language: 'marathi',
   });
@@ -38,15 +48,41 @@ export default function Users() {
     },
   });
 
+  // Fetch teams for dropdown
+  const { data: teams } = useQuery({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const response = await api.get<Team[]>('/teams');
+      return response.data;
+    },
+    enabled: currentUser?.role === 'super_admin',
+  });
+
   // Create user mutation
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => api.post('/auth/register', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
       resetForm();
     },
     onError: (error: any) => {
       const message = error.response?.data?.error || error.message || 'Failed to create user';
+      alert(message);
+    },
+  });
+
+  // Update user mutation
+  const updateMutation = useMutation({
+    mutationFn: (data: { userId: string; updates: Partial<typeof formData> }) =>
+      api.put(`/auth/users/${data.userId}`, data.updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      resetForm();
+    },
+    onError: (error: any) => {
+      const message = error.response?.data?.error || error.message || 'Failed to update user';
       alert(message);
     },
   });
@@ -65,7 +101,8 @@ export default function Users() {
       name: '',
       phone: '',
       email: '',
-      role: 'supervisor',
+      role: 'member',
+      team_id: '',
       password: '',
       preferred_language: 'marathi',
     });
@@ -73,9 +110,43 @@ export default function Users() {
     setEditingUser(null);
   };
 
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      name: user.name,
+      phone: user.phone,
+      email: user.email || '',
+      role: user.role,
+      team_id: user.team_id || '',
+      password: '',
+      preferred_language: user.preferred_language || 'marathi',
+    });
+    setShowForm(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
+    if (editingUser) {
+      // Update existing user
+      const updates: Partial<typeof formData> = {
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        preferred_language: formData.preferred_language,
+      };
+      // Only super_admin can change role and team
+      if (currentUser?.role === 'super_admin') {
+        updates.role = formData.role;
+        updates.team_id = formData.team_id;
+      }
+      // Only include password if it's set
+      if (formData.password) {
+        updates.password = formData.password;
+      }
+      updateMutation.mutate({ userId: editingUser.user_id, updates });
+    } else {
+      createMutation.mutate(formData);
+    }
   };
 
   const filteredUsers = users?.filter(
@@ -83,6 +154,8 @@ export default function Users() {
       user.name.toLowerCase().includes(search.toLowerCase()) ||
       user.phone.includes(search)
   );
+
+  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   return (
     <div className="space-y-6">
@@ -95,7 +168,10 @@ export default function Users() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            resetForm();
+            setShowForm(!showForm);
+          }}
           className="btn-primary inline-flex items-center"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -159,13 +235,36 @@ export default function Users() {
                     setFormData({ ...formData, role: e.target.value })
                   }
                   className="input"
+                  disabled={!isSuperAdmin && editingUser !== null}
                 >
-                  <option value="supervisor">Supervisor</option>
+                  <option value="member">Member</option>
                   <option value="admin">Admin</option>
+                  {isSuperAdmin && <option value="super_admin">Super Admin</option>}
                 </select>
               </div>
+              {isSuperAdmin && (
+                <div>
+                  <label className="label">Team</label>
+                  <select
+                    value={formData.team_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, team_id: e.target.value })
+                    }
+                    className="input"
+                  >
+                    <option value="">No Team</option>
+                    {teams?.map((team) => (
+                      <option key={team.team_id} value={team.team_id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
-                <label className="label">Password *</label>
+                <label className="label">
+                  Password {editingUser ? '(leave blank to keep current)' : '*'}
+                </label>
                 <input
                   type="password"
                   value={formData.password}
@@ -173,7 +272,7 @@ export default function Users() {
                     setFormData({ ...formData, password: e.target.value })
                   }
                   className="input"
-                  placeholder="Enter password"
+                  placeholder={editingUser ? 'Enter new password' : 'Enter password'}
                   required={!editingUser}
                 />
               </div>
@@ -198,10 +297,14 @@ export default function Users() {
               </button>
               <button
                 type="submit"
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
                 className="btn-primary"
               >
-                {createMutation.isPending ? 'Saving...' : 'Save User'}
+                {createMutation.isPending || updateMutation.isPending
+                  ? 'Saving...'
+                  : editingUser
+                  ? 'Update User'
+                  : 'Save User'}
               </button>
             </div>
           </form>
@@ -243,7 +346,7 @@ export default function Users() {
                     Role
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Language
+                    Team
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -280,16 +383,18 @@ export default function Users() {
                       <span
                         className={cn(
                           'badge',
-                          user.role === 'admin'
+                          user.role === 'super_admin'
+                            ? 'bg-red-100 text-red-700'
+                            : user.role === 'admin'
                             ? 'bg-purple-100 text-purple-700'
                             : 'bg-primary-100 text-primary-700'
                         )}
                       >
-                        {user.role === 'admin' ? 'Admin' : 'Supervisor'}
+                        {user.role === 'super_admin' ? 'Super Admin' : user.role === 'admin' ? 'Admin' : 'Member'}
                       </span>
                     </td>
-                    <td className="px-4 py-4 hidden md:table-cell text-sm text-gray-600 capitalize">
-                      {user.preferred_language}
+                    <td className="px-4 py-4 hidden md:table-cell text-sm text-gray-600">
+                      {user.team_name || '-'}
                     </td>
                     <td className="px-4 py-4">
                       <span
@@ -305,6 +410,13 @@ export default function Users() {
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleEdit(user)}
+                          className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-md"
+                          title="Edit user"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => toggleStatusMutation.mutate(user.user_id)}
                           className={cn(

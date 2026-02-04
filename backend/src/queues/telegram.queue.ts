@@ -214,6 +214,133 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
     return;
   }
 
+  // Handle task selection (show status options)
+  if (data.startsWith('task_select_')) {
+    const registryId = data.replace('task_select_', '');
+    logger.info('Task selected for status update', { registryId, chatId, userId });
+
+    // Verify task belongs to user (created by OR assigned to) and is from last 24 hours
+    const taskResult = await query(
+      `SELECT tr.registry_id, tr.status, tr.priority, tr.task_data,
+              c.name_english, c.name_marathi
+       FROM task_registry tr
+       JOIN categories c ON tr.category_id = c.category_id
+       WHERE tr.registry_id = $1
+         AND (tr.registered_by = $2 OR tr.assigned_to = $2)
+         AND tr.deleted_at IS NULL
+         AND tr.created_at >= NOW() - INTERVAL '24 hours'`,
+      [registryId, userId]
+    );
+
+    if (taskResult.rows.length === 0) {
+      await telegramService.sendMessage(
+        chatId,
+        `❌ <b>Task not found</b>\n\nकार्य सापडले नाही.\n\nThis task may have been deleted or is older than 24 hours.`
+      );
+      return;
+    }
+
+    const task = taskResult.rows[0];
+    const title = task.task_data?.title || task.task_data?.description?.slice(0, 30) || 'Untitled';
+    const currentStatus = task.status;
+
+    // Show status options
+    const statusMessage = `📝 <b>Update Task Status</b>\n\nकार्य स्थिती अपडेट करा\n\n<b>Task:</b> ${title}\n<b>Category:</b> ${task.name_marathi || task.name_english}\n<b>Current Status:</b> ${currentStatus}\n\nSelect new status:\nनवीन स्थिती निवडा:`;
+
+    const statusButtons = [
+      [
+        { text: currentStatus === 'pending' ? '⏳ Pending ✓' : '⏳ Pending', callback_data: `status_${registryId}_pending` },
+      ],
+      [
+        { text: currentStatus === 'in_progress' ? '🔄 In Progress ✓' : '🔄 In Progress', callback_data: `status_${registryId}_in_progress` },
+      ],
+      [
+        { text: currentStatus === 'completed' ? '✅ Completed ✓' : '✅ Completed', callback_data: `status_${registryId}_completed` },
+      ],
+      [
+        { text: '❌ Cancel', callback_data: 'cancel_status_update' },
+      ],
+    ];
+
+    await telegramService.sendMessageWithButtons(chatId, statusMessage, statusButtons);
+    return;
+  }
+
+  // Handle status update
+  if (data.startsWith('status_')) {
+    const parts = data.split('_');
+    // Format: status_<registry_id>_<status>
+    // registry_id is UUID so may contain dashes, status is last part
+    const status = parts[parts.length - 1];
+    const registryId = parts.slice(1, -1).join('_');
+
+    logger.info('Status update requested', { registryId, status, chatId, userId });
+
+    // Validate status
+    if (!['pending', 'in_progress', 'completed'].includes(status)) {
+      await telegramService.sendMessage(chatId, '❌ Invalid status selected.');
+      return;
+    }
+
+    // Verify task belongs to user (created by OR assigned to) and is from last 24 hours
+    const taskCheck = await query(
+      `SELECT registry_id, status, task_data
+       FROM task_registry
+       WHERE registry_id = $1
+         AND (registered_by = $2 OR assigned_to = $2)
+         AND deleted_at IS NULL
+         AND created_at >= NOW() - INTERVAL '24 hours'`,
+      [registryId, userId]
+    );
+
+    if (taskCheck.rows.length === 0) {
+      await telegramService.sendMessage(
+        chatId,
+        `❌ <b>Cannot update task</b>\n\nकार्य अपडेट करता येत नाही.\n\nThis task may not belong to you or is older than 24 hours.`
+      );
+      return;
+    }
+
+    const currentStatus = taskCheck.rows[0].status;
+
+    // Check if status is same
+    if (currentStatus === status) {
+      await telegramService.sendMessage(
+        chatId,
+        `ℹ️ Task is already <b>${status}</b>.\n\nकार्य आधीपासून <b>${status}</b> आहे.`
+      );
+      return;
+    }
+
+    // Update the status
+    await query(
+      `UPDATE task_registry
+       SET status = $1, updated_at = NOW()
+       WHERE registry_id = $2`,
+      [status, registryId]
+    );
+
+    const title = taskCheck.rows[0].task_data?.title || taskCheck.rows[0].task_data?.description?.slice(0, 30) || 'Task';
+    const statusEmoji = status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : '⏳';
+
+    await telegramService.sendMessage(
+      chatId,
+      `${statusEmoji} <b>Status Updated!</b>\n\nस्थिती अपडेट केली!\n\n<b>Task:</b> ${title}\n<b>New Status:</b> ${status}\n\nUse /mytasks to see all your tasks.`
+    );
+
+    logger.info('Task status updated via Telegram', { registryId, oldStatus: currentStatus, newStatus: status, userId });
+    return;
+  }
+
+  // Handle cancel
+  if (data === 'cancel_status_update') {
+    await telegramService.sendMessage(
+      chatId,
+      `❌ Status update cancelled.\n\nस्थिती अपडेट रद्द केले.\n\nUse /mytasks to see your tasks.`
+    );
+    return;
+  }
+
   // Handle category selection
   if (data.startsWith('category_')) {
     const categoryId = parseInt(data.replace('category_', ''), 10);
@@ -516,6 +643,7 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 /whoami - Show your linked account info
 
 <b>Tasks:</b>
+/mytasks - View & update your tasks (last 24 hours)
 /status - Show full task overview with details
 /today - Show today's tasks
 /pending - Show all pending tasks
@@ -527,6 +655,7 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 2. Send a text message describing your task
 3. Or send a voice message in Marathi/Hindi/English
 4. The bot will automatically categorize and register your task
+5. Use /mytasks to update task status
 
 <b>Example messages:</b>
 • "उद्या सकाळी पाईप दुरुस्ती करायची आहे"
@@ -697,6 +826,64 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
       }
       break;
 
+    case '/mytasks':
+      // Show user's tasks from last 24 hours with update options
+      const myTasksUserId = await getUserIdByTelegramId(message.from.id);
+      if (!myTasksUserId) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Account not linked</b>\n\nतुमचे खाते जोडलेले नाही.\n\nUse <code>/link YOUR_PHONE</code> to link your account.`
+        );
+        break;
+      }
+
+      // Get tasks from last 24 hours for this user (created by OR assigned to)
+      const myTasksResult = await query(
+        `SELECT tr.registry_id, tr.status, tr.priority, tr.task_data, tr.created_at,
+                tr.registered_by, tr.assigned_to,
+                c.name_english, c.name_marathi
+         FROM task_registry tr
+         JOIN categories c ON tr.category_id = c.category_id
+         WHERE (tr.registered_by = $1 OR tr.assigned_to = $1)
+           AND tr.deleted_at IS NULL
+           AND tr.created_at >= NOW() - INTERVAL '24 hours'
+         ORDER BY tr.created_at DESC
+         LIMIT 10`,
+        [myTasksUserId]
+      );
+
+      if (myTasksResult.rows.length === 0) {
+        await telegramService.sendMessage(
+          chatId,
+          `📋 <b>No tasks in last 24 hours</b>\n\nगेल्या 24 तासांत कोणतेही कार्य नाही.\n\nSend a message to create a new task!`
+        );
+        break;
+      }
+
+      // Create task list message with buttons
+      let myTasksMessage = `📋 <b>Your Tasks (Last 24 Hours)</b>\n\nतुमची कार्ये (गेल्या 24 तास)\n\nClick on a task to update its status:\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      const taskButtons: Array<{ text: string; callback_data: string }[]> = [];
+
+      myTasksResult.rows.forEach((task: any, index: number) => {
+        const title = task.task_data?.title || task.task_data?.description?.slice(0, 25) || 'Untitled';
+        const statusIcon = task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⏳';
+        const priorityIcon = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
+
+        myTasksMessage += `${index + 1}. ${statusIcon} ${priorityIcon} <b>${title}</b>\n`;
+        myTasksMessage += `   └ ${task.name_marathi || task.name_english}\n`;
+        myTasksMessage += `   └ Status: ${task.status}\n\n`;
+
+        // Add button for each task
+        taskButtons.push([{
+          text: `${index + 1}. ${statusIcon} ${title.slice(0, 20)}${title.length > 20 ? '...' : ''}`,
+          callback_data: `task_select_${task.registry_id}`,
+        }]);
+      });
+
+      await telegramService.sendMessageWithButtons(chatId, myTasksMessage, taskButtons);
+      break;
+
     case '/summary':
       // Check if user is linked and is admin
       const summaryUserId = await getUserIdByTelegramId(message.from.id);
@@ -713,7 +900,7 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
         [summaryUserId]
       );
 
-      if (userRoleCheck.rows[0]?.role !== 'admin') {
+      if (userRoleCheck.rows[0]?.role !== 'admin' && userRoleCheck.rows[0]?.role !== 'super_admin') {
         await telegramService.sendMessage(
           chatId,
           `❌ <b>Access denied</b>\n\nOnly admins can view the daily summary.\n\nफक्त प्रशासक दैनिक सारांश पाहू शकतात.`

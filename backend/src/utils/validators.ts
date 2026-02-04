@@ -8,7 +8,7 @@ export const phoneSchema = z
   .regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number')
   .transform((val) => val.replace(/\D/g, ''));
 
-export const emailSchema = z.string().email('Invalid email format').optional();
+export const emailSchema = z.string().email('Invalid email format').optional().or(z.literal(''));
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -17,13 +17,25 @@ export const paginationSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// Team validators
+export const teamCreateSchema = z.object({
+  name: z.string().min(2, 'Team name must be at least 2 characters').max(100),
+  description: z.string().max(500).optional(),
+  admin_id: uuidSchema.optional(),
+});
+
+export const teamUpdateSchema = teamCreateSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
 // User validators
 export const userCreateSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   phone: phoneSchema,
   email: emailSchema,
-  password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-  role: z.enum(['admin', 'supervisor']),
+  password: z.string().min(6, 'Password must be at least 6 characters').optional().or(z.literal('')),
+  role: z.enum(['super_admin', 'admin', 'member']),
+  team_id: uuidSchema.optional().or(z.literal('')).transform(val => val || undefined),
   preferred_language: z.enum(['marathi', 'english', 'hindi']).default('marathi'),
 });
 
@@ -50,6 +62,7 @@ export const taskCreateSchema = z.object({
   original_input: z.string().optional(),
   transcription: z.string().optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
+  assigned_to: uuidSchema.optional().or(z.literal('')).transform(val => val || undefined),
 });
 
 export const taskUpdateSchema = z.object({
@@ -57,6 +70,7 @@ export const taskUpdateSchema = z.object({
   task_data: z.record(z.unknown()).optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
+  assigned_to: uuidSchema.nullable().optional().or(z.literal('')).transform(val => val || null),
 });
 
 export const taskFiltersSchema = z.object({
@@ -64,6 +78,7 @@ export const taskFiltersSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
   registered_by: uuidSchema.optional(),
+  assigned_to: uuidSchema.optional(),
   date_from: z.coerce.date().optional(),
   date_to: z.coerce.date().optional(),
   search: z.string().optional(),

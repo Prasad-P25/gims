@@ -5,6 +5,7 @@ import { validateBody, validateQuery, validateParams } from '../middlewares/vali
 import { taskCreateSchema, taskUpdateSchema, taskFiltersSchema, paginationSchema, uuidSchema } from '../utils/validators';
 import { asyncHandler } from '../middlewares/error.middleware';
 import { taskController } from '../controllers/task.controller';
+import { attachmentController } from '../controllers/attachment.controller';
 import { AuthenticatedRequest } from '../types';
 import { z } from 'zod';
 
@@ -26,6 +27,15 @@ const upload = multer({
   },
 });
 
+// Configure multer for attachment uploads (in-memory storage)
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max per file
+    files: 5, // Max 5 files per upload
+  },
+});
+
 // Apply authentication to all routes
 router.use(authenticate);
 
@@ -33,6 +43,12 @@ router.use(authenticate);
 router.get(
   '/categories',
   asyncHandler((req, res) => taskController.getCategories(req, res))
+);
+
+// GET /api/tasks/assignable-users - Get users that can be assigned tasks
+router.get(
+  '/assignable-users',
+  asyncHandler((req, res) => taskController.getAssignableUsers(req as AuthenticatedRequest, res))
 );
 
 // GET /api/tasks/today - Get today's tasks
@@ -104,6 +120,37 @@ router.get(
   validateParams(z.object({ categoryId: z.coerce.number().int().positive() })),
   validateQuery(paginationSchema),
   asyncHandler((req, res) => taskController.getTasksByCategory(req as AuthenticatedRequest, res))
+);
+
+// ============== Attachment Routes ==============
+
+// POST /api/tasks/:id/attachments - Upload files to a task
+router.post(
+  '/:id/attachments',
+  validateParams(z.object({ id: uuidSchema })),
+  attachmentUpload.array('files', 5),
+  asyncHandler((req, res) => attachmentController.uploadAttachments(req as AuthenticatedRequest, res))
+);
+
+// GET /api/tasks/:id/attachments - List attachments for a task
+router.get(
+  '/:id/attachments',
+  validateParams(z.object({ id: uuidSchema })),
+  asyncHandler((req, res) => attachmentController.getAttachments(req as AuthenticatedRequest, res))
+);
+
+// GET /api/tasks/:id/attachments/:aid/download - Download an attachment
+router.get(
+  '/:id/attachments/:aid/download',
+  validateParams(z.object({ id: uuidSchema, aid: uuidSchema })),
+  asyncHandler((req, res) => attachmentController.downloadAttachment(req as AuthenticatedRequest, res))
+);
+
+// DELETE /api/tasks/:id/attachments/:aid - Delete an attachment
+router.delete(
+  '/:id/attachments/:aid',
+  validateParams(z.object({ id: uuidSchema, aid: uuidSchema })),
+  asyncHandler((req, res) => attachmentController.deleteAttachment(req as AuthenticatedRequest, res))
 );
 
 export default router;
