@@ -3,7 +3,7 @@
 
 -- Update role constraint to include super_admin and member
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin', 'admin', 'member', 'supervisor'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin', 'admin', 'member'));
 
 -- Create super admin user
 -- Phone: 9999999999
@@ -13,11 +13,11 @@ VALUES (
   'Super Admin',
   '9999999999',
   'admin@gims.local',
-  '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrx2wQzBZBjFD.LDzZsRlr7j7tqvMSq',
+  '$2a$10$pzkwsrWNIYYCMZ0AVUg.E.7NqE1ufV1z22SNOiqoFWcYoMAo/lUl6',
   'super_admin',
   true
 )
 ON CONFLICT (phone) DO UPDATE SET
   role = 'super_admin',
-  password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrx2wQzBZBjFD.LDzZsRlr7j7tqvMSq',
+  password_hash = '$2a$10$pzkwsrWNIYYCMZ0AVUg.E.7NqE1ufV1z22SNOiqoFWcYoMAo/lUl6',
   is_active = true;

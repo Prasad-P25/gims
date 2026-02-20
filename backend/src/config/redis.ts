@@ -6,13 +6,15 @@ import { logger } from '../utils/logger';
 const getRedisOptions = (): RedisOptions => {
   if (env.REDIS_URL) {
     const isUpstash = env.REDIS_URL.includes('upstash.io');
-    const url = new URL(env.REDIS_URL.replace('redis://', 'http://').replace('rediss://', 'https://'));
+    const usesTls = env.REDIS_URL.startsWith('rediss://') || isUpstash;
+    const normalizedUrl = env.REDIS_URL.replace('rediss://', 'https://').replace('redis://', 'http://');
+    const url = new URL(normalizedUrl);
 
     return {
       host: url.hostname,
       port: parseInt(url.port) || 6379,
       password: url.password || undefined,
-      tls: isUpstash ? {} : undefined,
+      tls: usesTls ? { rejectUnauthorized: false } : undefined,
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: false,
