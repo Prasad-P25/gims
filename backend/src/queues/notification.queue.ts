@@ -1,11 +1,12 @@
 import Bull, { Job } from 'bull';
 import { bullRedisConfig } from '../config/redis';
-import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { notificationService } from '../services/notification.service';
 
+type NotificationType = 'overdue-alert' | 'morning-update' | 'evening-update' | 'daily-summary';
+
 interface NotificationJobData {
-  type: 'daily-summary';
+  type: NotificationType;
 }
 
 // Create queue
@@ -18,10 +19,26 @@ const notificationQueue = new Bull<NotificationJobData>('notification', {
 });
 
 /**
- * Initialize notification schedules
- * Daily summary at 8 PM IST (14:30 UTC since IST is UTC+5:30)
+ * Convert IST hour:minute to UTC cron expression
+ * IST = UTC + 5:30
+ */
+function istToCronUTC(istHour: number, istMinute: number = 0): string {
+  let totalMinutes = istHour * 60 + istMinute;
+  totalMinutes -= 330; // Subtract 5h 30m
+  if (totalMinutes < 0) totalMinutes += 1440;
+  const utcHour = Math.floor(totalMinutes / 60);
+  const utcMinute = totalMinutes % 60;
+  return `${utcMinute} ${utcHour} * * *`;
+}
+
+/**
+ * Schedule all notification timers
  *
- * For testing: Set TEST_NOTIFICATION_MINUTES env var to trigger X minutes from now
+ * Times (IST):
+ *  9:00 AM — Overdue alert (tasks pending from previous days)
+ * 10:00 AM — Morning update (pending tasks, what to focus on)
+ *  6:00 PM — Evening update (what you did today, pending highlights)
+ *  7:00 PM — Daily report to admins/managers
  */
 export const initializeNotificationSchedules = async (): Promise<void> => {
   // Remove existing repeatable jobs to avoid duplicates
@@ -30,43 +47,56 @@ export const initializeNotificationSchedules = async (): Promise<void> => {
     await notificationQueue.removeRepeatableByKey(job.key);
   }
 
-  // Check if we're in test mode (trigger in X minutes)
+  // Check for test mode
   const testMinutes = process.env.TEST_NOTIFICATION_MINUTES;
 
   if (testMinutes) {
-    const now = new Date();
-    const triggerTime = new Date(now.getTime() + parseInt(testMinutes) * 60000);
-    const minute = triggerTime.getMinutes();
-    const hour = triggerTime.getHours();
-
-    await notificationQueue.add(
-      { type: 'daily-summary' },
-      {
-        repeat: { cron: `${minute} ${hour} * * *` },
-        jobId: 'daily-summary-notification',
-      }
-    );
-
-    logger.info(`TEST MODE: Notification scheduled for ${hour}:${minute.toString().padStart(2, '0')} (in ${testMinutes} minutes)`);
-  } else {
-    // Convert IST hour to UTC (IST = UTC + 5:30)
-    const istHour = env.DAILY_NOTIFICATION_HOUR;
-    const istMinutes = istHour * 60; // IST time in minutes from midnight
-    let utcMinutes = istMinutes - 330; // Subtract 5:30 (330 minutes)
-    if (utcMinutes < 0) utcMinutes += 1440; // Wrap around if negative
-    const utcHour = Math.floor(utcMinutes / 60);
-    const utcMinute = utcMinutes % 60;
-
-    await notificationQueue.add(
-      { type: 'daily-summary' },
-      {
-        repeat: { cron: `${utcMinute} ${utcHour} * * *` },
-        jobId: 'daily-summary-notification',
-      }
-    );
-
-    logger.info(`Notification schedules initialized (Daily summary at ${istHour}:00 IST / ${utcHour}:${utcMinute.toString().padStart(2, '0')} UTC)`);
+    // Test mode: schedule all notifications X minutes from now
+    const delay = parseInt(testMinutes) * 60 * 1000;
+    const types: NotificationType[] = ['overdue-alert', 'morning-update', 'evening-update', 'daily-summary'];
+    for (const type of types) {
+      await notificationQueue.add(
+        { type },
+        { delay, jobId: `test-${type}-${Date.now()}` }
+      );
+    }
+    logger.info(`TEST MODE: All notifications scheduled in ${testMinutes} minutes`);
+    return;
   }
+
+  // 9:00 AM IST — Overdue alerts
+  const overdueCron = istToCronUTC(9, 0);
+  await notificationQueue.add(
+    { type: 'overdue-alert' },
+    { repeat: { cron: overdueCron }, jobId: 'overdue-alert' }
+  );
+
+  // 10:00 AM IST — Morning update
+  const morningCron = istToCronUTC(10, 0);
+  await notificationQueue.add(
+    { type: 'morning-update' },
+    { repeat: { cron: morningCron }, jobId: 'morning-update' }
+  );
+
+  // 6:00 PM IST — Evening update
+  const eveningCron = istToCronUTC(18, 0);
+  await notificationQueue.add(
+    { type: 'evening-update' },
+    { repeat: { cron: eveningCron }, jobId: 'evening-update' }
+  );
+
+  // 7:00 PM IST — Daily summary to admins
+  const dailyCron = istToCronUTC(19, 0);
+  await notificationQueue.add(
+    { type: 'daily-summary' },
+    { repeat: { cron: dailyCron }, jobId: 'daily-summary' }
+  );
+
+  logger.info('Notification schedules initialized:');
+  logger.info(`  9:00 AM IST — Overdue alerts     (cron: ${overdueCron})`);
+  logger.info(`  10:00 AM IST — Morning update     (cron: ${morningCron})`);
+  logger.info(`  6:00 PM IST — Evening update      (cron: ${eveningCron})`);
+  logger.info(`  7:00 PM IST — Daily summary       (cron: ${dailyCron})`);
 };
 
 // Process notification queue
@@ -75,9 +105,14 @@ notificationQueue.process(async (job: Job<NotificationJobData>) => {
   logger.info('Processing notification job', { type });
 
   switch (type) {
+    case 'overdue-alert':
+      return { success: true, type, ...await notificationService.sendOverdueAlerts() };
+    case 'morning-update':
+      return { success: true, type, ...await notificationService.sendMorningUpdate() };
+    case 'evening-update':
+      return { success: true, type, ...await notificationService.sendEveningUpdate() };
     case 'daily-summary':
-      const result = await notificationService.sendDailySummaryToAdmins();
-      return { success: true, ...result };
+      return { success: true, type, ...await notificationService.sendDailySummaryToAdmins() };
     default:
       logger.warn('Unknown notification job type', { type });
       return { success: false, reason: 'unknown_type' };
@@ -102,19 +137,11 @@ export const closeNotificationQueue = async () => {
 };
 
 /**
- * Manually trigger daily summary (for testing)
+ * Trigger a specific notification type immediately (for testing via /testreminder)
  */
-export const triggerDailySummary = async () => {
-  return notificationQueue.add({ type: 'daily-summary' });
-};
-
-/**
- * Schedule a test notification after X minutes
- */
-export const scheduleTestNotification = async (minutes: number) => {
-  const delay = minutes * 60 * 1000; // Convert to milliseconds
+export const triggerNotification = async (type: NotificationType) => {
   return notificationQueue.add(
-    { type: 'daily-summary' },
-    { delay, jobId: `test-notification-${Date.now()}` }
+    { type },
+    { jobId: `manual-${type}-${Date.now()}` }
   );
 };

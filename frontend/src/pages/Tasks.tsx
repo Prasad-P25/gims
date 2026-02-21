@@ -12,6 +12,7 @@ import {
   Square,
   UserPlus,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { tasksService } from '../services/tasks';
 import { teamStatsService } from '../services/teamStats';
@@ -79,6 +80,15 @@ export default function Tasks() {
   const reassignMutation = useMutation({
     mutationFn: ({ taskId, assignTo }: { taskId: string; assignTo: string }) =>
       teamStatsService.reassignTask(taskId, assignTo),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['team-dashboard'] });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (taskId: string) => tasksService.deleteTask(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['team-dashboard'] });
@@ -328,6 +338,7 @@ export default function Tasks() {
                       onStatusChange={handleQuickStatusChange}
                       assignableUsers={assignableUsers}
                       onReassign={(assignTo) => reassignMutation.mutate({ taskId: task.registry_id, assignTo })}
+                      onDelete={(taskId) => deleteMutation.mutate(taskId)}
                     />
                   ))}
                 </tbody>
@@ -424,6 +435,7 @@ function TaskRow({
   onStatusChange,
   assignableUsers,
   onReassign,
+  onDelete,
 }: {
   task: Task;
   isAdmin: boolean;
@@ -432,6 +444,7 @@ function TaskRow({
   onStatusChange: (taskId: string, status: string) => void;
   assignableUsers: Array<{ user_id: string; name: string }>;
   onReassign: (assignTo: string) => void;
+  onDelete: (taskId: string) => void;
 }) {
   const [showReassign, setShowReassign] = useState(false);
 
@@ -545,12 +558,27 @@ function TaskRow({
 
       {/* Action */}
       <td className="px-4 py-4 text-right">
-        <Link
-          to={`/tasks/${task.registry_id}`}
-          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-        >
-          View
-        </Link>
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to={`/tasks/${task.registry_id}`}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
+            View
+          </Link>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete this task?')) {
+                  onDelete(task.registry_id);
+                }
+              }}
+              className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+              title="Delete task"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );

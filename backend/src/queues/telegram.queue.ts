@@ -9,6 +9,7 @@ import { telegramService, TelegramMessage, TelegramCallbackQuery } from '../serv
 import { geminiService } from '../services/gemini.service';
 import { taskService } from '../services/task.service';
 import { notificationService } from '../services/notification.service';
+import { triggerNotification } from './notification.queue';
 
 // Helper function to get user by telegram ID
 async function getUserIdByTelegramId(telegramId: number): Promise<string | null> {
@@ -66,6 +67,9 @@ async function linkTelegramToUser(telegramId: number, phone: string): Promise<{ 
   logger.info('Telegram account linked', { telegramId, userId: user.user_id, userName: user.name });
   return { success: true, userName: user.name };
 }
+
+// Temp storage for assign flow (maps chatId to selected taskId)
+const assignPendingTask = new Map<number, string>();
 
 interface TelegramMessageJobData {
   message?: TelegramMessage;
@@ -332,12 +336,158 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
     return;
   }
 
+  // Handle test notification buttons (super admin)
+  if (data.startsWith('test_notif_')) {
+    const notifType = data.replace('test_notif_', '');
+    // Verify super admin
+    const testUserResult = await query('SELECT role FROM users WHERE user_id = $1', [userId]);
+    if (testUserResult.rows[0]?.role !== 'super_admin') {
+      await telegramService.sendMessage(chatId, '❌ Only super admin can test reminders.');
+      return;
+    }
+
+    const notifTypeMap: Record<string, 'overdue-alert' | 'morning-update' | 'evening-update' | 'daily-summary'> = {
+      overdue: 'overdue-alert',
+      morning: 'morning-update',
+      evening: 'evening-update',
+      daily: 'daily-summary',
+    };
+
+    const mappedType = notifTypeMap[notifType];
+    if (mappedType) {
+      await triggerNotification(mappedType);
+      await telegramService.sendMessage(
+        chatId,
+        `🧪 <b>${notifType}</b> reminder triggered! Sending to all eligible users...`
+      );
+    }
+    return;
+  }
+
   // Handle cancel
-  if (data === 'cancel_status_update') {
+  if (data === 'cancel_status_update' || data === 'cancel_assign') {
     await telegramService.sendMessage(
       chatId,
-      `❌ Status update cancelled.\n\nस्थिती अपडेट रद्द केले.\n\nUse /mytasks to see your tasks.`
+      `❌ Action cancelled.\n\nकृती रद्द केली.`
     );
+    return;
+  }
+
+  // Handle assign - step 1: task selected, store it and show team members
+  if (data.startsWith('assign_task_')) {
+    const registryId = data.replace('assign_task_', '');
+    logger.info('Task selected for assignment', { registryId, chatId, userId });
+
+    // Store selected task for this chat
+    assignPendingTask.set(chatId, registryId);
+
+    // Get user's role and team
+    const userResult = await query(
+      'SELECT role, team_id FROM users WHERE user_id = $1',
+      [userId]
+    );
+    const userRole = userResult.rows[0]?.role;
+    const userTeamId = userResult.rows[0]?.team_id;
+
+    // Get team members to assign to
+    let membersResult;
+    if (userRole === 'super_admin') {
+      membersResult = await query(
+        `SELECT user_id, name, phone FROM users
+         WHERE role IN ('admin', 'member') AND is_active = true AND deleted_at IS NULL
+         ORDER BY name LIMIT 15`
+      );
+    } else if (userRole === 'admin' && userTeamId) {
+      membersResult = await query(
+        `SELECT user_id, name, phone FROM users
+         WHERE team_id = $1 AND role = 'member' AND is_active = true AND deleted_at IS NULL AND user_id != $2
+         ORDER BY name LIMIT 15`,
+        [userTeamId, userId]
+      );
+    } else {
+      await telegramService.sendMessage(chatId, '❌ You cannot assign tasks.');
+      return;
+    }
+
+    if (membersResult.rows.length === 0) {
+      assignPendingTask.delete(chatId);
+      await telegramService.sendMessage(
+        chatId,
+        `❌ <b>No team members found</b>\n\nटीम सदस्य सापडले नाहीत.\n\nAdd members to your team first via the web dashboard.`
+      );
+      return;
+    }
+
+    // Use short index-based callback data to stay under 64 byte limit
+    const memberButtons = membersResult.rows.map((m: any, i: number) => ([{
+      text: `👤 ${m.name}`,
+      callback_data: `asgn_${m.user_id.slice(0, 8)}_${m.user_id}`,
+    }]));
+    memberButtons.push([{ text: '❌ Cancel', callback_data: 'cancel_assign' }]);
+
+    await telegramService.sendMessageWithButtons(
+      chatId,
+      `👥 <b>Select team member to assign:</b>\n\nकार्य नियुक्त करण्यासाठी सदस्य निवडा:`,
+      memberButtons
+    );
+    return;
+  }
+
+  // Handle assign - step 2: member selected, do the assignment
+  if (data.startsWith('asgn_')) {
+    const memberUserId = data.split('_').slice(2).join('_');
+    const registryId = assignPendingTask.get(chatId);
+
+    if (!registryId) {
+      await telegramService.sendMessage(chatId, '❌ Session expired. Please use /assign again.');
+      return;
+    }
+
+    // Clean up
+    assignPendingTask.delete(chatId);
+
+    logger.info('Assigning task', { registryId, memberUserId, chatId, userId });
+
+    // Update the task
+    await query(
+      'UPDATE task_registry SET assigned_to = $1, updated_at = NOW() WHERE registry_id = $2',
+      [memberUserId, registryId]
+    );
+
+    // Get task and member info
+    const taskInfo = await query(
+      `SELECT tr.task_data, c.name_marathi, c.name_english
+       FROM task_registry tr JOIN categories c ON tr.category_id = c.category_id
+       WHERE tr.registry_id = $1`,
+      [registryId]
+    );
+    const memberInfo = await query(
+      'SELECT name, telegram_id FROM users WHERE user_id = $1',
+      [memberUserId]
+    );
+
+    const taskTitle = taskInfo.rows[0]?.task_data?.title || 'Task';
+    const memberName = memberInfo.rows[0]?.name || 'Unknown';
+    const memberTelegramId = memberInfo.rows[0]?.telegram_id;
+
+    // Confirm to admin
+    await telegramService.sendMessage(
+      chatId,
+      `✅ <b>Task Assigned!</b>\n\nकार्य नियुक्त केले!\n\n<b>Task:</b> ${taskTitle}\n<b>Assigned to:</b> ${memberName}\n<b>Category:</b> ${taskInfo.rows[0]?.name_marathi || taskInfo.rows[0]?.name_english}`
+    );
+
+    // Notify the member via Telegram if they have telegram linked
+    if (memberTelegramId) {
+      try {
+        await telegramService.sendMessage(
+          memberTelegramId,
+          `📌 <b>New Task Assigned to You!</b>\n\nतुम्हाला नवीन कार्य नियुक्त केले!\n\n<b>Task:</b> ${taskTitle}\n<b>Category:</b> ${taskInfo.rows[0]?.name_marathi || taskInfo.rows[0]?.name_english}\n\nUse /mytasks to view and update status.`
+        );
+      } catch (e) {
+        logger.warn('Could not notify member via Telegram', { memberUserId, error: e });
+      }
+    }
+
     return;
   }
 
@@ -644,11 +794,13 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 
 <b>Tasks:</b>
 /mytasks - View & update your tasks (last 24 hours)
+/assign - Assign a task to team member (admin)
 /status - Show full task overview with details
 /today - Show today's tasks
 /pending - Show all pending tasks
 /menu - Show category menu
 /summary - Daily task summary (admin only)
+/testreminder - Test a reminder now (super admin)
 
 <b>How to use:</b>
 1. First link your account: <code>/link 9876543210</code>
@@ -884,6 +1036,87 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
       await telegramService.sendMessageWithButtons(chatId, myTasksMessage, taskButtons);
       break;
 
+    case '/assign':
+      // Admin assigns task to team member
+      const assignUserId = await getUserIdByTelegramId(message.from.id);
+      if (!assignUserId) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Account not linked</b>\n\nUse <code>/link YOUR_PHONE</code> to link your account.`
+        );
+        break;
+      }
+
+      // Check role
+      const assignUserRole = await query(
+        'SELECT role, team_id FROM users WHERE user_id = $1',
+        [assignUserId]
+      );
+      if (!['admin', 'super_admin'].includes(assignUserRole.rows[0]?.role)) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Access denied</b>\n\nOnly admins can assign tasks.\n\nफक्त प्रशासक कार्ये नियुक्त करू शकतात.`
+        );
+        break;
+      }
+
+      // Get recent unassigned tasks (last 7 days)
+      const assignTeamId = assignUserRole.rows[0]?.team_id;
+      let unassignedQuery: string;
+      let unassignedParams: unknown[];
+
+      if (assignUserRole.rows[0]?.role === 'super_admin') {
+        unassignedQuery = `
+          SELECT tr.registry_id, tr.task_data, tr.priority, c.name_marathi, c.name_english
+          FROM task_registry tr
+          JOIN categories c ON tr.category_id = c.category_id
+          WHERE tr.assigned_to IS NULL
+            AND tr.status IN ('pending', 'in_progress')
+            AND tr.deleted_at IS NULL
+            AND tr.created_at >= NOW() - INTERVAL '7 days'
+          ORDER BY tr.created_at DESC LIMIT 10`;
+        unassignedParams = [];
+      } else {
+        unassignedQuery = `
+          SELECT tr.registry_id, tr.task_data, tr.priority, c.name_marathi, c.name_english
+          FROM task_registry tr
+          JOIN categories c ON tr.category_id = c.category_id
+          WHERE tr.assigned_to IS NULL
+            AND tr.status IN ('pending', 'in_progress')
+            AND tr.deleted_at IS NULL
+            AND tr.created_at >= NOW() - INTERVAL '7 days'
+            AND tr.registered_by IN (SELECT user_id FROM users WHERE team_id = $1 AND deleted_at IS NULL)
+          ORDER BY tr.created_at DESC LIMIT 10`;
+        unassignedParams = [assignTeamId];
+      }
+
+      const unassignedTasks = await query(unassignedQuery, unassignedParams);
+
+      if (unassignedTasks.rows.length === 0) {
+        await telegramService.sendMessage(
+          chatId,
+          `✅ <b>No unassigned tasks</b>\n\nसर्व कार्ये आधीच नियुक्त आहेत.\n\nAll tasks from the last 7 days are already assigned.`
+        );
+        break;
+      }
+
+      let assignMsg = `📋 <b>Select task to assign:</b>\n\nनियुक्त करण्यासाठी कार्य निवडा:\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+      const assignButtons: Array<{ text: string; callback_data: string }[]> = [];
+
+      unassignedTasks.rows.forEach((task: any, i: number) => {
+        const title = task.task_data?.title || task.task_data?.description?.slice(0, 25) || 'Untitled';
+        const priorityIcon = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
+        assignMsg += `${i + 1}. ${priorityIcon} <b>${title}</b>\n   └ ${task.name_marathi || task.name_english}\n\n`;
+        assignButtons.push([{
+          text: `${i + 1}. ${priorityIcon} ${title.slice(0, 25)}`,
+          callback_data: `assign_task_${task.registry_id}`,
+        }]);
+      });
+
+      assignButtons.push([{ text: '❌ Cancel', callback_data: 'cancel_assign' }]);
+      await telegramService.sendMessageWithButtons(chatId, assignMsg, assignButtons);
+      break;
+
     case '/summary':
       // Check if user is linked and is admin
       const summaryUserId = await getUserIdByTelegramId(message.from.id);
@@ -912,6 +1145,56 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
       const dailyStats = await notificationService.getDailyStats();
       const summaryMessage = notificationService.formatDailySummary(dailyStats);
       await telegramService.sendMessage(chatId, summaryMessage);
+      break;
+
+    case '/testreminder':
+      // Super admin only — trigger a specific reminder for testing
+      const testUserId = await getUserIdByTelegramId(message.from.id);
+      if (!testUserId) {
+        await telegramService.sendMessage(chatId, '❌ Account not linked. Use /link first.');
+        break;
+      }
+
+      const testRoleCheck = await query('SELECT role FROM users WHERE user_id = $1', [testUserId]);
+      if (testRoleCheck.rows[0]?.role !== 'super_admin') {
+        await telegramService.sendMessage(chatId, '❌ Only super admin can test reminders.');
+        break;
+      }
+
+      const testArg = text.split(' ')[1]?.toLowerCase();
+      const validTypes = ['overdue', 'morning', 'evening', 'daily'] as const;
+
+      if (!testArg || !validTypes.includes(testArg as any)) {
+        await telegramService.sendMessageWithButtons(
+          chatId,
+          `🧪 <b>Test Reminder</b>\n\nSelect which reminder to trigger now:\n\n` +
+          `• <b>overdue</b> — 9 AM overdue alert\n` +
+          `• <b>morning</b> — 10 AM morning update\n` +
+          `• <b>evening</b> — 6 PM evening update\n` +
+          `• <b>daily</b> — 7 PM admin daily report\n\n` +
+          `Or type: <code>/testreminder morning</code>`,
+          [
+            [{ text: '⚠️ 9AM Overdue', callback_data: 'test_notif_overdue' }],
+            [{ text: '🌅 10AM Morning', callback_data: 'test_notif_morning' }],
+            [{ text: '🌆 6PM Evening', callback_data: 'test_notif_evening' }],
+            [{ text: '📊 7PM Daily', callback_data: 'test_notif_daily' }],
+          ]
+        );
+        break;
+      }
+
+      const typeMap: Record<string, 'overdue-alert' | 'morning-update' | 'evening-update' | 'daily-summary'> = {
+        overdue: 'overdue-alert',
+        morning: 'morning-update',
+        evening: 'evening-update',
+        daily: 'daily-summary',
+      };
+
+      await triggerNotification(typeMap[testArg]);
+      await telegramService.sendMessage(
+        chatId,
+        `🧪 <b>${testArg}</b> reminder triggered! It will be sent to all eligible users shortly.`
+      );
       break;
 
     default:

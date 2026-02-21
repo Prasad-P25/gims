@@ -133,38 +133,57 @@ export default function Settings() {
                 Reminder Schedule
               </h2>
               <p className="text-sm text-gray-500 mb-6">
-                Automated reminders are sent via WhatsApp/Telegram at the following times
+                Automated reminders are sent via Telegram at the following times
               </p>
               <div className="space-y-4">
-                {/* Morning Reminder */}
+                {/* Overdue Alert */}
+                <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                      <span className="text-xl">⚠️</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">Overdue Alert</p>
+                      <p className="text-sm text-gray-500">
+                        Alert for tasks pending from previous days
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-red-600">09:00 AM</p>
+                    <p className="text-xs text-gray-500">IST</p>
+                  </div>
+                </div>
+
+                {/* Morning Update */}
                 <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                       <span className="text-xl">🌅</span>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Morning Summary</p>
+                      <p className="font-medium text-gray-900">Morning Update</p>
                       <p className="text-sm text-gray-500">
-                        Daily pending task summary for all users
+                        Pending tasks and today's focus for all users
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-blue-600">09:00 AM</p>
+                    <p className="text-lg font-bold text-blue-600">10:00 AM</p>
                     <p className="text-xs text-gray-500">IST</p>
                   </div>
                 </div>
 
-                {/* Evening Reminder */}
+                {/* Evening Update */}
                 <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg border border-orange-100">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
                       <span className="text-xl">🌆</span>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Evening Summary</p>
+                      <p className="font-medium text-gray-900">Evening Update</p>
                       <p className="text-sm text-gray-500">
-                        End of day status report for all users
+                        Today's progress and pending highlights for all users
                       </p>
                     </div>
                   </div>
@@ -174,29 +193,29 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {/* Overdue Alerts */}
-                <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                {/* Daily Report */}
+                <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border border-purple-100">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                      <span className="text-xl">⚠️</span>
+                    <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                      <span className="text-xl">📊</span>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Overdue Alerts</p>
+                      <p className="font-medium text-gray-900">Daily Report</p>
                       <p className="text-sm text-gray-500">
-                        Immediate alerts when tasks become overdue
+                        Full day summary for managers and admins only
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-red-600">Real-time</p>
-                    <p className="text-xs text-gray-500">As needed</p>
+                    <p className="text-lg font-bold text-purple-600">07:00 PM</p>
+                    <p className="text-xs text-gray-500">IST</p>
                   </div>
                 </div>
 
                 {/* Info Note */}
                 <div className="p-4 bg-gray-100 rounded-lg mt-6">
                   <p className="text-sm text-gray-600">
-                    <strong>Note:</strong> Reminders are automatically sent to all active users via WhatsApp or Telegram based on their registered contact. Contact administrator to modify reminder schedules.
+                    <strong>Note:</strong> Reminders are sent via Telegram to all users who have linked their account. Super admin can test reminders using <code>/testreminder</code> on Telegram.
                   </p>
                 </div>
               </div>

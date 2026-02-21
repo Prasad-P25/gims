@@ -5,7 +5,7 @@ import { addMessageJob } from '../queues/message.queue';
 import { addTelegramMessageJob } from '../queues/telegram.queue';
 import { telegramService, TelegramUpdate } from '../services/telegram.service';
 import { notificationService } from '../services/notification.service';
-import { scheduleTestNotification } from '../queues/notification.queue';
+import { triggerNotification } from '../queues/notification.queue';
 import { WhatsAppWebhookPayload } from '../types';
 
 export class WebhookController {
@@ -201,16 +201,14 @@ export class WebhookController {
     }
 
     try {
-      const minutes = parseInt(req.query.minutes as string) || 2;
-      logger.info(`Scheduling test notification in ${minutes} minutes`);
+      const type = (req.query.type as string) || 'daily-summary';
+      logger.info(`Triggering test notification: ${type}`);
 
-      await scheduleTestNotification(minutes);
+      await triggerNotification(type as any);
 
-      const triggerTime = new Date(Date.now() + minutes * 60000);
       res.json({
-        message: `Notification scheduled`,
-        triggerIn: `${minutes} minutes`,
-        triggerAt: triggerTime.toLocaleTimeString('en-IN'),
+        message: `Notification triggered`,
+        type,
       });
     } catch (error: any) {
       logger.error('Failed to schedule test notification', { error });

@@ -1,43 +1,71 @@
 import { Response } from 'express';
 import { taskService } from '../services/task.service';
+import { query } from '../config/database';
 import { sendSuccess } from '../utils/response';
 import { AuthenticatedRequest } from '../types';
 
 export class DashboardController {
+  /**
+   * Build role-based WHERE conditions for dashboard queries
+   */
+  private buildRoleFilter(user: { user_id: string; role: string; team_id?: string }): { condition: string; params: unknown[] } {
+    if (user.role === 'member') {
+      return {
+        condition: 'AND (tr.registered_by = $1 OR tr.assigned_to = $1)',
+        params: [user.user_id],
+      };
+    } else if (user.role === 'admin' && user.team_id) {
+      return {
+        condition: `AND (
+          tr.registered_by IN (SELECT user_id FROM users WHERE team_id = $1 AND deleted_at IS NULL)
+          OR tr.assigned_to IN (SELECT user_id FROM users WHERE team_id = $1 AND deleted_at IS NULL)
+        )`,
+        params: [user.team_id],
+      };
+    }
+    // super_admin sees all
+    return { condition: '', params: [] };
+  }
+
   /**
    * Get dashboard statistics
    * Role-based: members see only their own tasks
    */
   async getStats(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
-    const userContext = {
+    const { condition, params } = this.buildRoleFilter({
       user_id: user.user_id,
       role: user.role,
       team_id: user.team_id,
-    };
+    });
 
-    // Get stats filtered by user role
-    const { tasks, meta } = await taskService.getTasks({}, { page: 1, limit: 1000 }, userContext);
+    // All counts in a single efficient query
+    const sql = `
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tr.status = 'pending') as pending,
+        COUNT(*) FILTER (WHERE tr.status = 'in_progress') as in_progress,
+        COUNT(*) FILTER (WHERE tr.status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE tr.status = 'cancelled') as cancelled,
+        COUNT(*) FILTER (WHERE tr.registration_date = CURRENT_DATE) as today,
+        COUNT(*) FILTER (WHERE tr.status = 'completed' AND DATE(tr.updated_at) = CURRENT_DATE) as completed_today,
+        COUNT(*) FILTER (WHERE tr.status = 'pending' AND tr.created_at < NOW() - INTERVAL '24 hours') as overdue
+      FROM task_registry tr
+      WHERE tr.deleted_at IS NULL ${condition}
+    `;
 
-    const total = meta.total;
-    const pending = tasks.filter(t => t.status === 'pending').length;
-    const inProgress = tasks.filter(t => t.status === 'in_progress').length;
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    const cancelled = tasks.filter(t => t.status === 'cancelled').length;
-
-    const today = new Date().toISOString().split('T')[0];
-    const todayTasks = tasks.filter(t => t.registration_date?.toString().startsWith(today));
-    const completedToday = todayTasks.filter(t => t.status === 'completed').length;
+    const result = await query(sql, params);
+    const stats = result.rows[0];
 
     sendSuccess(res, {
-      total,
-      pending,
-      in_progress: inProgress,
-      completed,
-      cancelled,
-      today: todayTasks.length,
-      completed_today: completedToday,
-      overdue: pending, // Tasks pending would be considered for overdue
+      total: parseInt(stats.total, 10),
+      pending: parseInt(stats.pending, 10),
+      in_progress: parseInt(stats.in_progress, 10),
+      completed: parseInt(stats.completed, 10),
+      cancelled: parseInt(stats.cancelled, 10),
+      today: parseInt(stats.today, 10),
+      completed_today: parseInt(stats.completed_today, 10),
+      overdue: parseInt(stats.overdue, 10),
     });
   }
 
