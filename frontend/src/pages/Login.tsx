@@ -130,11 +130,6 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <p>Demo credentials:</p>
-            <p className="font-mono text-gray-700">Phone: 9999999999</p>
-            <p className="font-mono text-gray-700">Password: admin123</p>
-          </div>
         </div>
 
         <p className="mt-4 text-center text-sm text-gray-500">

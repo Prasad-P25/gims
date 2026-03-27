@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { taskService } from './task.service';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
-import { ReportFilters, TaskRegistry, Category } from '../types';
+import { ReportFilters, TaskRegistry, Category, UserContext } from '../types';
 
 interface ReportData {
   tasks: TaskRegistry[];
@@ -57,10 +57,11 @@ export class ReportService {
    */
   async generateReport(
     filters: ReportFilters,
-    userId: string
+    userId: string,
+    userContext?: UserContext
   ): Promise<{ filePath: string; fileName: string }> {
-    // Fetch report data
-    const reportData = await this.fetchReportData(filters);
+    // Fetch report data (role-filtered)
+    const reportData = await this.fetchReportData(filters, userContext);
 
     // Generate report based on format
     if (filters.format === 'pdf') {
@@ -73,23 +74,71 @@ export class ReportService {
   /**
    * Fetch data for the report
    */
-  private async fetchReportData(filters: ReportFilters): Promise<ReportData> {
-    const { tasks } = await taskService.getTasks(
+  private async fetchReportData(filters: ReportFilters, userContext?: UserContext): Promise<ReportData> {
+    // 1. Current date range: ALL tasks (pending, in_progress, completed, cancelled)
+    const { tasks: currentTasks } = await taskService.getTasks(
       {
         date_from: filters.date_from,
         date_to: filters.date_to,
-        category_id: filters.category_ids?.[0], // TODO: Support multiple categories
+        category_id: filters.category_ids?.[0],
       },
-      { page: 1, limit: 10000 } // Get all matching tasks
+      { page: 1, limit: 10000 },
+      userContext
     );
 
-    const stats = await taskService.getTaskStats(filters.date_from, filters.date_to);
+    // 2. Previous months: only PENDING & IN_PROGRESS tasks (unfinished work that needs tracking)
+    const { tasks: olderTasks } = await taskService.getTasks(
+      {
+        date_to: new Date(filters.date_from.getTime() - 1), // Everything before selected date range
+        category_id: filters.category_ids?.[0],
+      },
+      { page: 1, limit: 10000 },
+      userContext
+    );
+
+    const carryOverTasks = olderTasks.filter(
+      (t) => t.status === 'pending' || t.status === 'in_progress'
+    );
+
+    // Merge: carry-over (older pending) first, then current month tasks
+    const existingIds = new Set(currentTasks.map((t) => t.registry_id));
+    const uniqueCarryOver = carryOverTasks.filter((t) => !existingIds.has(t.registry_id));
+    const allTasks = [...uniqueCarryOver, ...currentTasks];
+
+    // Stats reflect everything in the report
+    const stats = this.calculateStats(allTasks);
 
     return {
-      tasks,
+      tasks: allTasks,
       stats,
       dateRange: { from: filters.date_from, to: filters.date_to },
       generatedAt: new Date(),
+    };
+  }
+
+  /**
+   * Calculate stats from a task list (used when include_open_tasks merges multiple queries)
+   */
+  private calculateStats(tasks: TaskRegistry[]): ReportData['stats'] {
+    const byCategory = new Map<number, { category_id: number; name: string; count: number }>();
+
+    for (const task of tasks) {
+      const catName = (task as any).category_name_english || `Category ${task.category_id}`;
+      const existing = byCategory.get(task.category_id);
+      if (existing) {
+        existing.count++;
+      } else {
+        byCategory.set(task.category_id, { category_id: task.category_id, name: catName, count: 1 });
+      }
+    }
+
+    return {
+      total: tasks.length,
+      pending: tasks.filter((t) => t.status === 'pending').length,
+      inProgress: tasks.filter((t) => t.status === 'in_progress').length,
+      completed: tasks.filter((t) => t.status === 'completed').length,
+      cancelled: tasks.filter((t) => t.status === 'cancelled').length,
+      byCategory: Array.from(byCategory.values()).sort((a, b) => b.count - a.count),
     };
   }
 
@@ -141,14 +190,34 @@ export class ReportService {
         logger.warn('Failed to register Devanagari font', { error: err });
       }
 
-      // Helper to draw text with appropriate font
-      const drawText = (text: string, x: number, y: number, options?: object) => {
-        if (hasDevanagariFont && this.containsDevanagari(text)) {
-          doc.font('Devanagari');
-        } else {
+      // Helper to draw text with appropriate font (handles mixed Latin + Devanagari)
+      const drawText = (text: string, x: number, y: number, options?: any) => {
+        if (!hasDevanagariFont || !this.containsDevanagari(text)) {
           doc.font('Helvetica');
+          doc.text(text, x, y, options);
+          return;
         }
-        doc.text(text, x, y, options);
+
+        // Split text into segments of Devanagari vs Latin
+        const segments = text.match(/[\u0900-\u097F\u0980-\u09FF]+|[^\u0900-\u097F\u0980-\u09FF]+/g) || [text];
+        let currentX = x;
+        const lineBreak = false;
+
+        segments.forEach((segment, idx) => {
+          if (this.containsDevanagari(segment)) {
+            doc.font('Devanagari');
+          } else {
+            doc.font('Helvetica');
+          }
+          const segWidth = doc.widthOfString(segment);
+          if (idx === 0) {
+            doc.text(segment, currentX, y, { ...options, lineBreak, continued: idx < segments.length - 1 });
+          } else {
+            doc.text(segment, { lineBreak, continued: idx < segments.length - 1 });
+          }
+          currentX += segWidth;
+        });
+
         doc.font('Helvetica'); // Reset to default
       };
 

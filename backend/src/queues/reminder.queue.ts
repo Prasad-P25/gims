@@ -36,11 +36,11 @@ const reminderProcessQueue = new Bull<ProcessReminderJobData>('reminder-process'
 
 // Schedule recurring jobs
 export const initializeReminderSchedules = async (): Promise<void> => {
-  // Process pending reminders every minute
+  // Process pending reminders every 15 minutes
   await reminderScheduleQueue.add(
     { type: 'process-pending' },
     {
-      repeat: { cron: '* * * * *' }, // Every minute
+      repeat: { cron: '*/15 * * * *' }, // Every 15 minutes
       jobId: 'process-pending-reminders',
     }
   );

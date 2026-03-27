@@ -65,7 +65,12 @@ export class TaskController {
    */
   async createTask(req: AuthenticatedRequest, res: Response): Promise<void> {
     const userId = req.user!.user_id;
-    const userName = req.user!.phone; // We'll get actual name below
+
+    // Auto-assign task to the member who created it (if no explicit assignment)
+    if (req.user!.role === 'member' && !req.body.assigned_to) {
+      req.body.assigned_to = userId;
+    }
+
     const task = await taskService.createTask(req.body, userId);
 
     // Send notification if task is assigned to someone

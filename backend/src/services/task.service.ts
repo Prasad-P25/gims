@@ -20,6 +20,21 @@ export class TaskService {
     input: TaskCreateInput,
     userId: string
   ): Promise<TaskRegistry> {
+    // Auto-assign to team admin if no assignee specified
+    let assignedTo = input.assigned_to || null;
+    if (!assignedTo) {
+      const teamResult = await query(
+        `SELECT t.admin_id FROM teams t
+         JOIN users u ON u.team_id = t.team_id
+         WHERE u.user_id = $1 AND u.deleted_at IS NULL AND t.deleted_at IS NULL`,
+        [userId]
+      );
+      if (teamResult.rows[0]?.admin_id) {
+        assignedTo = teamResult.rows[0].admin_id;
+        logger.info('Auto-assigned task to team admin', { userId, adminId: assignedTo });
+      }
+    }
+
     const sql = `
       INSERT INTO task_registry (
         category_id, registered_by, assigned_to, task_data, input_mode, input_source,
@@ -31,7 +46,7 @@ export class TaskService {
     const values = [
       input.category_id,
       userId,
-      input.assigned_to || null,
+      assignedTo,
       JSON.stringify(input.task_data),
       input.input_mode,
       input.input_source || 'web',
@@ -436,7 +451,8 @@ export class TaskService {
    */
   async getTaskStats(
     dateFrom?: Date,
-    dateTo?: Date
+    dateTo?: Date,
+    userContext?: UserContext
   ): Promise<{
     total: number;
     pending: number;
@@ -446,10 +462,36 @@ export class TaskService {
     byCategory: Array<{ category_id: number; name: string; count: number }>;
     byPriority: Array<{ priority: string; count: number }>;
   }> {
-    const dateCondition = dateFrom && dateTo
-      ? 'AND registration_date BETWEEN $1 AND $2'
-      : '';
-    const params = dateFrom && dateTo ? [dateFrom, dateTo] : [];
+    const conditions: string[] = ['deleted_at IS NULL'];
+    const trConditions: string[] = ['tr.deleted_at IS NULL'];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (dateFrom && dateTo) {
+      conditions.push(`registration_date BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+      trConditions.push(`tr.registration_date BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+      params.push(dateFrom, dateTo);
+      paramIndex += 2;
+    }
+
+    // Role-based filtering
+    if (userContext) {
+      if (userContext.role === 'member') {
+        conditions.push(`(registered_by = $${paramIndex} OR assigned_to = $${paramIndex})`);
+        trConditions.push(`(tr.registered_by = $${paramIndex} OR tr.assigned_to = $${paramIndex})`);
+        params.push(userContext.user_id);
+        paramIndex++;
+      } else if (userContext.role === 'admin' && userContext.team_id) {
+        conditions.push(`(registered_by IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL) OR assigned_to IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL))`);
+        trConditions.push(`(tr.registered_by IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL) OR tr.assigned_to IN (SELECT user_id FROM users WHERE team_id = $${paramIndex} AND deleted_at IS NULL))`);
+        params.push(userContext.team_id);
+        paramIndex++;
+      }
+      // super_admin sees all
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const trWhereClause = trConditions.join(' AND ');
 
     // Overall stats
     const statsSql = `
@@ -460,7 +502,7 @@ export class TaskService {
         COUNT(*) FILTER (WHERE status = 'completed') as completed,
         COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
       FROM task_registry
-      WHERE deleted_at IS NULL ${dateCondition}
+      WHERE ${whereClause}
     `;
     const statsResult = await query(statsSql, params);
     const stats = statsResult.rows[0];
@@ -473,7 +515,7 @@ export class TaskService {
         COUNT(*) as count
       FROM task_registry tr
       JOIN categories c ON tr.category_id = c.category_id
-      WHERE tr.deleted_at IS NULL ${dateCondition}
+      WHERE ${trWhereClause}
       GROUP BY tr.category_id, c.name_english
       ORDER BY count DESC
     `;
@@ -483,7 +525,7 @@ export class TaskService {
     const prioritySql = `
       SELECT priority, COUNT(*) as count
       FROM task_registry
-      WHERE deleted_at IS NULL ${dateCondition}
+      WHERE ${whereClause}
       GROUP BY priority
     `;
     const priorityResult = await query(prioritySql, params);
