@@ -1,7 +1,7 @@
 # GIMS Task Registry - Windows Server Setup Guide
 
 Complete guide to set up GIMS on a **Windows PC** that will run 24/7 as a server.
-Other users will access via phones, tablets, and computers.
+All users access via **Cloudflare Tunnel** — no static IP or port forwarding needed.
 
 ---
 
@@ -20,12 +20,6 @@ Before installing anything, verify the server PC is ready.
 Open **Command Prompt** (Win + R → type `cmd` → Enter):
 
 ```cmd
-:: Check your IP address
-ipconfig
-
-:: Look for "Ethernet adapter" → "IPv4 Address" (e.g., 192.168.1.100)
-:: Write this down — you'll need it later
-
 :: Check internet connectivity
 ping google.com
 
@@ -33,23 +27,9 @@ ping google.com
 ping 192.168.1.1
 ```
 
-**Important:** Note down the **IPv4 Address** — this is your SERVER_IP.
+Ensure the server has a stable internet connection — Cloudflare Tunnel requires outbound internet access.
 
-### 1.3 Set Static IP (Important!)
-
-A server must have a **fixed IP** so it doesn't change after reboot.
-
-1. Open **Settings** → **Network & Internet** → **Ethernet** → **Edit** (next to IP assignment)
-2. Change from **Automatic (DHCP)** to **Manual**
-3. Turn on **IPv4** and enter:
-   - **IP Address:** Your current IP (e.g., `192.168.1.100`)
-   - **Subnet mask:** `255.255.255.0`
-   - **Gateway:** `192.168.1.1` (your router IP)
-   - **Preferred DNS:** `8.8.8.8`
-   - **Alternate DNS:** `8.8.4.4`
-4. Save
-
-### 1.4 Power Settings (Prevent Sleep)
+### 1.3 Power Settings (Prevent Sleep)
 
 The PC must stay ON 24/7:
 
@@ -61,7 +41,7 @@ The PC must stay ON 24/7:
    - **Sleep** → Sleep after → `Never`
    - **Sleep** → Hibernate after → `Never`
 
-### 1.5 Disable Windows Auto-Restart for Updates
+### 1.4 Disable Windows Auto-Restart for Updates
 
 Windows updates can restart the PC and kill your server:
 
@@ -213,7 +193,7 @@ Create/edit `C:\gims\backend\.env`:
 ```env
 # Server
 NODE_ENV=production
-PORT=3000
+PORT=4891
 HOST=0.0.0.0
 
 # Database (replace YOUR_PASSWORD with actual postgres password)
@@ -254,16 +234,11 @@ Run twice — use first for `JWT_SECRET`, second for `JWT_REFRESH_SECRET`.
 
 Create/edit `C:\gims\frontend\.env`:
 
-**For same-network access only:**
-```env
-VITE_API_URL=http://SERVER_IP:3000/api
-```
-Replace `SERVER_IP` with the static IP you noted (e.g., `http://192.168.1.100:3000/api`).
-
-**For remote access (with domain):**
 ```env
 VITE_API_URL=https://api.gims.yourdomain.com/api
 ```
+
+Replace `yourdomain.com` with your actual domain (configured in Phase 9 with Cloudflare).
 
 ---
 
@@ -309,7 +284,7 @@ pm2 start dist/server.js --name gims-backend
 
 :: Start Frontend
 cd C:\gims\frontend
-pm2 start serve --name gims-frontend -- -s dist -l 5173 --no-clipboard
+pm2 start serve --name gims-frontend -- -s dist -l 4173 --no-clipboard
 
 :: Save so it survives reboot
 pm2 save
@@ -332,71 +307,33 @@ Both should show **online**:
 
 ---
 
-## PHASE 9: Windows Firewall
+## PHASE 9: Setup Cloudflare Tunnel
 
-Allow other devices to connect:
+Cloudflare Tunnel creates a secure outbound connection from your server to Cloudflare's network. All users (office, home, field) access GIMS through your domain — no static IP, no port forwarding, no firewall rules needed.
 
-### Option A: Command Line (faster)
-```cmd
-:: Open Command Prompt as Administrator
-netsh advfirewall firewall add rule name="GIMS Backend" dir=in action=allow protocol=TCP localport=3000
-netsh advfirewall firewall add rule name="GIMS Frontend" dir=in action=allow protocol=TCP localport=5173
-```
+### 9.1 Prerequisites
 
-### Option B: GUI
-1. Open **Windows Defender Firewall** → **Advanced Settings**
-2. Click **Inbound Rules** → **New Rule**
-3. Select **Port** → Next
-4. Select **TCP**, enter: `3000, 5173` → Next
-5. Select **Allow the connection** → Next
-6. Check all profiles → Next
-7. Name: `GIMS Application` → Finish
+- A **Cloudflare account** (free): https://dash.cloudflare.com/sign-up
+- A **domain name** added to Cloudflare (Cloudflare must manage DNS for the domain)
 
----
-
-## PHASE 10: Test Locally
-
-On the **server PC itself**:
-```cmd
-:: Test backend
-curl http://localhost:3000/api/health
-
-:: Test frontend
-start http://localhost:5173
-```
-
-From a **phone/laptop on the same network**:
-- Open browser → `http://SERVER_IP:5173`
-- Login: Phone `9999999999`, Password `admin123`
-
-If it doesn't connect from phone:
-1. Check firewall rules were added
-2. Make sure phone is on **same WiFi/network**
-3. Try `ping SERVER_IP` from another PC
-4. Check Windows Defender isn't blocking
-
----
-
-## PHASE 11: Remote Access (Cloudflare Tunnel)
-
-If users need access from **outside the office network** (home, field work, etc.):
-
-### 11.1 Download cloudflared
+### 9.2 Download cloudflared
 
 Download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 Choose **Windows 64-bit**.
 
-### 11.2 Setup
+### 9.3 Login & Create Tunnel
 
 ```cmd
-:: Login to Cloudflare
+:: Login to Cloudflare (opens browser for authentication)
 cloudflared login
 
 :: Create tunnel
 cloudflared tunnel create gims
 ```
 
-### 11.3 Create Config
+After creation, note the **Tunnel ID** — you'll need it for the config file.
+
+### 9.4 Create Config
 
 Create `C:\Users\<your-username>\.cloudflared\config.yml`:
 
@@ -406,55 +343,88 @@ credentials-file: C:\Users\<your-username>\.cloudflared\<tunnel-id>.json
 
 ingress:
   - hostname: gims.yourdomain.com
-    service: http://localhost:5173
+    service: http://localhost:4173
   - hostname: api.gims.yourdomain.com
-    service: http://localhost:3000
+    service: http://localhost:4891
   - service: http_status:404
 ```
 
-### 11.4 Add DNS & Install as Service
+Replace `<your-username>` with your Windows username and `<tunnel-id>` with the ID from the previous step.
+
+### 9.5 Add DNS Records & Install as Service
 
 ```cmd
+:: Create DNS records pointing to the tunnel
 cloudflared tunnel route dns gims gims.yourdomain.com
 cloudflared tunnel route dns gims api.gims.yourdomain.com
+
+:: Install as Windows Service (runs on startup automatically)
 cloudflared service install
 ```
 
-### 11.5 Update Frontend for Public URL
+### 9.6 Verify Tunnel is Running
 
-Edit `C:\gims\frontend\.env`:
-```env
-VITE_API_URL=https://api.gims.yourdomain.com/api
-```
-
-Rebuild:
 ```cmd
-cd C:\gims\frontend
-npm run build
-pm2 restart gims-frontend
+:: Check the service is running
+sc query cloudflared
+
+:: Test from the server itself
+curl https://gims.yourdomain.com
+curl https://api.gims.yourdomain.com/api/health
 ```
 
-### 11.6 Access from Anywhere
+### 9.7 Access URLs
 
 | | URL |
 |---|---|
 | Frontend | https://gims.yourdomain.com |
 | API | https://api.gims.yourdomain.com |
 
+All users — whether in the office or remote — use these same URLs.
+
 ---
 
-## PHASE 12: Telegram Bot Setup
+## PHASE 10: Test the Application
 
-### 12.1 Create Bot (if not done)
+### 10.1 On the Server PC
+
+```cmd
+:: Test backend is running locally
+curl http://localhost:4891/api/health
+
+:: Test frontend is running locally
+start http://localhost:4173
+
+:: Test via Cloudflare Tunnel
+curl https://api.gims.yourdomain.com/api/health
+start https://gims.yourdomain.com
+```
+
+### 10.2 From Any Device (Phone / Laptop / Tablet)
+
+- Open browser → `https://gims.yourdomain.com`
+- Login: Phone `9999999999`, Password `admin123`
+
+If it doesn't connect:
+1. Check Cloudflare Tunnel is running: `sc query cloudflared`
+2. Check PM2 apps are online: `pm2 status`
+3. Verify DNS has propagated: `nslookup gims.yourdomain.com`
+4. Check backend logs: `pm2 logs gims-backend`
+
+---
+
+## PHASE 11: Telegram Bot Setup
+
+### 11.1 Create Bot (if not done)
 
 1. Open Telegram → Search for `@BotFather`
 2. Send `/newbot`
 3. Give it a name and username
 4. Copy the **bot token** → put in `backend\.env` as `TELEGRAM_BOT_TOKEN`
 
-### 12.2 Set Webhook
+### 11.2 Set Webhook
 
-The server needs a **public URL** (from Cloudflare Tunnel):
+The webhook uses your Cloudflare Tunnel public URL:
 
 ```cmd
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\": \"https://api.gims.yourdomain.com/api/webhook/telegram\"}"
@@ -465,7 +435,7 @@ Verify:
 curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 ```
 
-### 12.3 Link Users
+### 11.3 Link Users
 
 Each user links their Telegram by sending to the bot:
 ```
@@ -508,6 +478,8 @@ Super admin can test any reminder: send `/testreminder` to the bot.
 | Restart backend | `pm2 restart gims-backend` |
 | Restart everything | `pm2 restart all` |
 | Stop everything | `pm2 stop all` |
+| Check tunnel status | `sc query cloudflared` |
+| Restart tunnel | `sc stop cloudflared && sc start cloudflared` |
 | After reboot if not auto-started | `pm2 resurrect` |
 
 ---
@@ -535,16 +507,18 @@ pm2 restart gims-frontend
 
 | Problem | Check |
 |---------|-------|
-| Can't connect from phone | Firewall rules? Same network? Correct IP? |
+| Can't access from any device | Is Cloudflare Tunnel running? `sc query cloudflared` |
+| Tunnel running but site unreachable | DNS propagated? `nslookup gims.yourdomain.com` |
 | Backend won't start | `pm2 logs gims-backend` for errors |
 | Database error | Verify password in DATABASE_URL in `.env` |
-| Frontend blank page | Check VITE_API_URL has correct IP/domain |
+| Frontend blank page | Check VITE_API_URL has correct Cloudflare domain |
 | Redis error | Is Memurai service running? `sc query memurai` |
 | Login fails | Did seeds run? `psql -U postgres -d gims_db -c "SELECT phone, role FROM users;"` |
-| Port in use | `netstat -ano | findstr :3000` then `taskkill /PID <pid> /F` |
+| Port in use | `netstat -ano | findstr :4891` then `taskkill /PID <pid> /F` |
 | Telegram bot not responding | Check webhook: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo` |
-| PC went to sleep | Check power settings (Phase 1.4) |
+| PC went to sleep | Check power settings (Phase 1.3) |
 | App not running after reboot | `pm2 resurrect` or `pm2 start` again |
+| Tunnel not running after reboot | `sc start cloudflared` |
 | Slow performance | Check RAM usage in Task Manager, close unused programs |
 
 ---
@@ -558,8 +532,9 @@ After setup, run through this:
 - [ ] `psql -U postgres -c "SELECT 1"` connects
 - [ ] `sc query memurai` shows RUNNING (or Upstash URL works)
 - [ ] `pm2 status` shows both apps **online**
-- [ ] `http://localhost:5173` loads login page on server PC
-- [ ] `http://SERVER_IP:5173` loads from another device on same network
+- [ ] `sc query cloudflared` shows RUNNING
+- [ ] `http://localhost:4173` loads login page on server PC
+- [ ] `https://gims.yourdomain.com` loads from any device
 - [ ] Login with `9999999999` / `admin123` works
 - [ ] Telegram bot responds to `/start`
 - [ ] Dashboard shows correct stats
@@ -569,25 +544,18 @@ After setup, run through this:
 ## Architecture
 
 ```
-  SAME NETWORK (Office):
-  ┌─────────────────┐         ┌──────────────────────────┐
-  │ Phone / Laptop  │         │   Windows Server PC      │
-  │                 ├────────►│                          │
-  │ 192.168.x.x    │  WiFi   │  :5173  Frontend (serve) │
-  │                 │   LAN   │  :3000  Backend (Node.js)│
-  └─────────────────┘         │  :5432  PostgreSQL       │
-                              │  :6379  Redis (Memurai)  │
-                              └──────────────────────────┘
+  ALL USERS (Office, Home, Field):
+  ┌─────────────────┐         ┌───────────────┐         ┌────────────────────────┐
+  │ Phone / Laptop  │         │  Cloudflare   │         │   Windows Server PC    │
+  │ (anywhere)      ├────────►│  Tunnel       ├────────►│                        │
+  │                 │ HTTPS   │  (Free)       │  Secure │  :4173  Frontend       │
+  │ gims.domain.com │         │               │  Tunnel │  :4891  Backend        │
+  └─────────────────┘         └───────────────┘         │  :5432  PostgreSQL     │
+                                                        │  :6379  Redis (Memurai)│
+  ┌─────────────────┐                                   │                        │
+  │ Telegram Bot    ├──────────────────────────────────►│  Webhook               │
+  └─────────────────┘         via public URL            └────────────────────────┘
 
-  REMOTE ACCESS (Internet):
-  ┌─────────────────┐         ┌───────────────┐         ┌────────────────┐
-  │ Phone / Laptop  │         │  Cloudflare   │         │ Windows Server │
-  │ (anywhere)      ├────────►│  Tunnel       ├────────►│                │
-  │                 │ HTTPS   │  (Free)       │  Secure │  Frontend      │
-  │ gims.domain.com │         │               │  Tunnel │  Backend       │
-  └─────────────────┘         └───────────────┘         │  PostgreSQL    │
-                                                        │  Redis         │
-  ┌─────────────────┐                                   │                │
-  │ Telegram Bot    ├──────────────────────────────────►│  Webhook       │
-  └─────────────────┘         via public URL            └────────────────┘
+  No static IP needed — Cloudflare Tunnel connects outbound from the server.
+  No firewall rules needed — no inbound ports are exposed.
 ```

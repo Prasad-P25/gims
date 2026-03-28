@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 const poolConfig: PoolConfig = env.DATABASE_URL
   ? {
       connectionString: env.DATABASE_URL,
-      ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: env.DATABASE_URL?.includes('localhost') || env.DATABASE_URL?.includes('127.0.0.1') ? false : { rejectUnauthorized: false },
     }
   : {
       host: env.DB_HOST,

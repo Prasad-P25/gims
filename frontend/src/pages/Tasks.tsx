@@ -18,7 +18,7 @@ import { tasksService } from '../services/tasks';
 import { teamStatsService } from '../services/teamStats';
 import { dashboardService } from '../services/dashboard';
 import { useAuth } from '../context/AuthContext';
-import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel, getSourceLabel, getSourceColor } from '../lib/utils';
+import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel } from '../lib/utils';
 import type { Task } from '../types';
 
 export default function Tasks() {
@@ -40,7 +40,7 @@ export default function Tasks() {
   const [bulkAssignTo, setBulkAssignTo] = useState('');
 
   // Fetch tasks
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['tasks', page, filters],
     queryFn: () => tasksService.getTasks({
       page,

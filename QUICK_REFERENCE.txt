@@ -1,0 +1,127 @@
+=============================================
+  GIMS TASK TRACKER - QUICK REFERENCE
+=============================================
+
+URLS
+----
+  Website  : https://gimstasktracker.techviewai.com
+  API      : https://gimstasktracker-api.techviewai.com
+
+LOGIN
+-----
+  Phone    : 9999999999
+  Password : admin123
+
+
+=============================================
+  EVERYDAY COMMANDS (open Command Prompt)
+=============================================
+
+CHECK IF EVERYTHING IS RUNNING
+  pm2 status
+
+  All 3 should show "online":
+    - gims-backend
+    - gims-frontend
+    - cloudflare-tunnel
+
+
+RESTART EVERYTHING
+  pm2 restart all
+
+RESTART ONLY ONE SERVICE
+  pm2 restart gims-backend
+  pm2 restart gims-frontend
+  pm2 restart cloudflare-tunnel
+
+STOP EVERYTHING
+  pm2 stop all
+
+START EVERYTHING
+  pm2 start all
+
+VIEW ERROR LOGS
+  pm2 logs gims-backend
+  pm2 logs gims-frontend
+  pm2 logs cloudflare-tunnel
+  (Press Ctrl+C to exit logs)
+
+
+=============================================
+  AFTER PC RESTART
+=============================================
+
+Everything should start automatically.
+
+If it doesn't:
+  1. Open Command Prompt
+  2. Type: pm2 resurrect
+  3. Type: pm2 status
+  4. All 3 services should show "online"
+
+
+=============================================
+  UPDATING THE APP (after code changes)
+=============================================
+
+  1. Open Command Prompt
+  2. Run these commands one by one:
+
+  cd "D:\Gims Task Tracker\gims"
+  git pull
+
+  cd backend
+  npm install
+  npm run build
+  pm2 restart gims-backend
+
+  pm2 stop gims-frontend
+  cd ..\frontend
+  npm install
+  npm run build
+  pm2 start gims-frontend
+
+
+=============================================
+  TROUBLESHOOTING
+=============================================
+
+SITE NOT LOADING
+  1. Run: pm2 status
+  2. If anything shows "stopped" or "errored":
+     Run: pm2 restart all
+
+SITE LOADS BUT LOGIN FAILS
+  1. Run: pm2 logs gims-backend
+  2. Look for red error messages
+  3. Most common fix: pm2 restart gims-backend
+
+TELEGRAM BOT NOT WORKING
+  1. Check backend is running: pm2 status
+  2. Check tunnel is running: pm2 status
+  3. Both must show "online"
+
+EVERYTHING CRASHED
+  1. Run: pm2 kill
+  2. Run: pm2 resurrect
+  3. Run: pm2 status
+
+
+=============================================
+  IMPORTANT - DO NOT
+=============================================
+
+  - Do NOT turn off the PC (it's a server)
+  - Do NOT close Command Prompt windows randomly
+  - Do NOT change files in the project without knowing what you're doing
+  - Do NOT change the .env files unless instructed
+
+
+=============================================
+  PORTS USED (for reference)
+=============================================
+
+  Backend  : 4891
+  Frontend : 4173
+  Database : 5432 (PostgreSQL)
+  Redis    : Upstash Cloud (no local port)

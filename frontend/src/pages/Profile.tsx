@@ -16,7 +16,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { profileService } from '../services/profile';
-import type { UpdateProfileData, ChangePasswordData } from '../services/profile';
+import type { UserProfile, UpdateProfileData, ChangePasswordData } from '../services/profile';
 import { cn } from '../lib/utils';
 
 export default function Profile() {
@@ -36,17 +36,19 @@ export default function Profile() {
   });
 
   // Fetch profile
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ['profile'],
     queryFn: profileService.getProfile,
-    onSuccess: (data) => {
-      setProfileData({
-        name: data.name,
-        phone: data.phone,
-        email: data.email || '',
-      });
-    },
   });
+
+  // Sync profile data when fetched
+  if (profile && !profileData.name) {
+    setProfileData({
+      name: profile.name,
+      phone: profile.phone,
+      email: profile.email || '',
+    });
+  }
 
   // Update profile mutation
   const updateProfileMutation = useMutation({

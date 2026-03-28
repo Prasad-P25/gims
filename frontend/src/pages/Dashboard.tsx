@@ -15,8 +15,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -62,7 +60,6 @@ const STATUS_COLORS = {
   cancelled: '#ef4444',
 };
 
-const CHART_COLORS = ['#0284c7', '#0891b2', '#059669', '#84cc16', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -115,15 +112,6 @@ export default function Dashboard() {
     { name: 'Completed', value: stats?.completed || 0, color: STATUS_COLORS.completed },
     { name: 'Cancelled', value: (stats as any)?.cancelled || 0, color: STATUS_COLORS.cancelled },
   ].filter(d => d.value > 0);
-
-  // Prepare data for category bar chart
-  const categoryChartData = (categoryStats || [])
-    .filter(cat => cat.task_count > 0)
-    .slice(0, 6)
-    .map(cat => ({
-      name: cat.name_english.length > 15 ? cat.name_english.slice(0, 15) + '...' : cat.name_english,
-      tasks: cat.task_count,
-    }));
 
   // Prepare trend data
   const trendData = (trends?.data || []).map((d: any) => ({
