@@ -272,11 +272,10 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
 
   // Handle status update
   if (data.startsWith('status_')) {
-    const parts = data.split('_');
-    // Format: status_<registry_id>_<status>
-    // registry_id is UUID so may contain dashes, status is last part
-    const status = parts[parts.length - 1];
-    const registryId = parts.slice(1, -1).join('_');
+    // Format: status_<uuid>_<status>
+    // UUID is always 36 chars: "status_" (7) + uuid (36) + "_" (1) + status
+    const registryId = data.slice(7, 43);
+    const status = data.slice(44);
 
     logger.info('Status update requested', { registryId, status, chatId, userId });
 

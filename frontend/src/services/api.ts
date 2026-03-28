@@ -37,7 +37,9 @@ api.interceptors.response.use(
     const originalRequest = error.config as typeof error.config & { _retry?: boolean };
 
     // If 401 and not already retried, try to refresh token
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    // Skip refresh for password-change endpoints (401 means wrong password, not expired token)
+    const isPasswordChange = originalRequest?.url?.includes('/password');
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isPasswordChange) {
       originalRequest._retry = true;
 
       const refreshToken = localStorage.getItem('refreshToken');

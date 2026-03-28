@@ -38,8 +38,8 @@ export class TaskService {
     const sql = `
       INSERT INTO task_registry (
         category_id, registered_by, assigned_to, task_data, input_mode, input_source,
-        input_language, original_input, transcription, priority
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        input_language, original_input, transcription, priority, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
 
@@ -54,6 +54,7 @@ export class TaskService {
       input.original_input || null,
       input.transcription || null,
       input.priority || 'medium',
+      input.status || 'pending',
     ];
 
     const result = await query<TaskRegistry>(sql, values);

@@ -1,8 +1,12 @@
 import { Router } from 'express';
+import { authenticate } from '../middlewares/auth.middleware';
 import { profileController } from '../controllers/profile.controller';
 import { asyncHandler } from '../middlewares/error.middleware';
 
 const router = Router();
+
+// All profile routes require authentication
+router.use(authenticate);
 
 // Get current user profile
 router.get('/', asyncHandler(profileController.getProfile.bind(profileController)));

@@ -1,13 +1,53 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Save, Bell, Globe, Database, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dashboardService } from '../services/dashboard';
+import { profileService } from '../services/profile';
 
 export default function Settings() {
   const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState('general');
+  const [passwordData, setPasswordData] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
+  });
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const changePasswordMutation = useMutation({
+    mutationFn: () => profileService.changePassword({
+      current_password: passwordData.current_password,
+      new_password: passwordData.new_password,
+    }),
+    onSuccess: (response) => {
+      setPasswordMessage({ type: 'success', text: response.message || 'Password updated successfully' });
+      setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
+      setTimeout(() => setPasswordMessage(null), 3000);
+    },
+    onError: (error: any) => {
+      const errText = error.response?.data?.error || error.response?.data?.message || 'Failed to change password';
+      setPasswordMessage({ type: 'error', text: errText });
+      setTimeout(() => setPasswordMessage(null), 8000);
+    },
+  });
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+      setTimeout(() => setPasswordMessage(null), 5000);
+      return;
+    }
+    if (passwordData.new_password.length < 6) {
+      setPasswordMessage({ type: 'error', text: 'Password must be at least 6 characters' });
+      setTimeout(() => setPasswordMessage(null), 5000);
+      return;
+    }
+    changePasswordMutation.mutate();
+  };
+
   const [generalSettings, setGeneralSettings] = useState({
     system_name: 'GIMS - Task Registry',
     default_language: 'marathi',
@@ -282,13 +322,20 @@ export default function Settings() {
                   <h3 className="font-medium text-gray-900 mb-3">
                     Change Password
                   </h3>
-                  <div className="space-y-4">
+                  {passwordMessage && (
+                    <div className={`p-3 rounded-lg mb-4 text-sm ${passwordMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                      {passwordMessage.text}
+                    </div>
+                  )}
+                  <form onSubmit={handlePasswordSubmit} className="space-y-4">
                     <div>
                       <label className="label">Current Password</label>
                       <input
                         type="password"
                         className="input"
                         placeholder="Enter current password"
+                        value={passwordData.current_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, current_password: e.target.value })}
                       />
                     </div>
                     <div>
@@ -297,6 +344,8 @@ export default function Settings() {
                         type="password"
                         className="input"
                         placeholder="Enter new password"
+                        value={passwordData.new_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, new_password: e.target.value })}
                       />
                     </div>
                     <div>
@@ -305,10 +354,18 @@ export default function Settings() {
                         type="password"
                         className="input"
                         placeholder="Confirm new password"
+                        value={passwordData.confirm_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, confirm_password: e.target.value })}
                       />
                     </div>
-                    <button className="btn-primary">Update Password</button>
-                  </div>
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={changePasswordMutation.isPending}
+                    >
+                      {changePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
+                    </button>
+                  </form>
                 </div>
 
                 {/* Session Info */}

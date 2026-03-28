@@ -113,6 +113,7 @@ export interface TaskCreateInput {
   input_language?: string;
   original_input?: string;
   transcription?: string;
+  status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string;
 }

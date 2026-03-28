@@ -73,8 +73,9 @@ export default function Profile() {
       setTimeout(() => setMessage(null), 3000);
     },
     onError: (error: any) => {
-      setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to change password' });
-      setTimeout(() => setMessage(null), 5000);
+      const errText = error.response?.data?.error || error.response?.data?.message || 'Failed to change password';
+      setMessage({ type: 'error', text: errText });
+      setTimeout(() => setMessage(null), 8000);
     },
   });
 

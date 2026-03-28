@@ -61,6 +61,7 @@ export const taskCreateSchema = z.object({
   input_language: z.string().optional(),
   original_input: z.string().optional(),
   transcription: z.string().optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
   assigned_to: uuidSchema.optional().or(z.literal('')).transform(val => val || undefined),
 });
@@ -70,7 +71,10 @@ export const taskUpdateSchema = z.object({
   task_data: z.record(z.unknown()).optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
-  assigned_to: uuidSchema.nullable().optional().or(z.literal('')).transform(val => val || null),
+  assigned_to: uuidSchema.nullable().optional().or(z.literal('')).transform(val => {
+    if (val === undefined) return undefined;
+    return val || null;
+  }),
 });
 
 export const taskFiltersSchema = z.object({

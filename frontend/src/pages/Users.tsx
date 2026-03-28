@@ -29,6 +29,7 @@ export default function Users() {
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [search, setSearch] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -80,6 +81,8 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['teams'] });
       resetForm();
+      setSuccessMessage('User updated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
     },
     onError: (error: any) => {
       const message = error.response?.data?.error || error.message || 'Failed to update user';
@@ -159,6 +162,11 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
+      {successMessage && (
+        <div className="p-4 rounded-lg bg-green-50 text-green-800 flex items-center gap-2">
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
