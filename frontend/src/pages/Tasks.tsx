@@ -310,6 +310,11 @@ export default function Tasks() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                       Category
                     </th>
+                    {isAdmin && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                        Raised By
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">
                       Assigned To
                     </th>
@@ -333,6 +338,7 @@ export default function Tasks() {
                       key={task.registry_id}
                       task={task}
                       isAdmin={isAdmin}
+                      currentUserId={user?.user_id || ''}
                       isSelected={selectedTasks.includes(task.registry_id)}
                       onToggleSelect={() => toggleTaskSelection(task.registry_id)}
                       onStatusChange={handleQuickStatusChange}
@@ -430,6 +436,7 @@ export default function Tasks() {
 function TaskRow({
   task,
   isAdmin,
+  currentUserId,
   isSelected,
   onToggleSelect,
   onStatusChange,
@@ -439,6 +446,7 @@ function TaskRow({
 }: {
   task: Task;
   isAdmin: boolean;
+  currentUserId: string;
   isSelected: boolean;
   onToggleSelect: () => void;
   onStatusChange: (taskId: string, status: string) => void;
@@ -480,6 +488,15 @@ function TaskRow({
         </span>
       </td>
 
+      {/* Raised By - Admin only */}
+      {isAdmin && (
+        <td className="px-4 py-4 hidden lg:table-cell">
+          <span className="text-sm text-gray-900">
+            {task.registered_by_name || '-'}
+          </span>
+        </td>
+      )}
+
       {/* Assigned To */}
       <td className="px-4 py-4 hidden xl:table-cell">
         {isAdmin ? (
@@ -512,9 +529,19 @@ function TaskRow({
             )}
           </div>
         ) : (
-          <span className={cn('text-sm', task.assigned_to_name ? 'text-gray-900' : 'text-gray-400')}>
-            {task.assigned_to_name || 'Unassigned'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={cn('text-sm', task.assigned_to_name ? 'text-gray-900' : 'text-gray-400')}>
+              {task.assigned_to_name || 'Unassigned'}
+            </span>
+            {task.assigned_to !== currentUserId && (
+              <button
+                onClick={() => onReassign(currentUserId)}
+                className="text-xs text-primary-600 hover:text-primary-800 font-medium whitespace-nowrap"
+              >
+                Assign to me
+              </button>
+            )}
+          </div>
         )}
       </td>
 

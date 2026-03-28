@@ -8,6 +8,7 @@ import { redis, redisHealthCheck, closeRedis } from './config/redis';
 import { closeQueues } from './queues/message.queue';
 import { closeTelegramQueues } from './queues/telegram.queue';
 import { initializeNotificationSchedules, closeNotificationQueue } from './queues/notification.queue';
+import { startTelegramPolling, stopTelegramPolling } from './services/telegram-polling.service';
 
 logger.info('Message queues initialized');
 
@@ -28,6 +29,9 @@ const gracefulShutdown = async (signal: string) => {
     logger.info('HTTP server closed');
 
     try {
+      // Stop telegram polling
+      await stopTelegramPolling();
+
       // Close message queues
       await closeQueues();
       await closeTelegramQueues();
@@ -58,6 +62,11 @@ const gracefulShutdown = async (signal: string) => {
 const server = app.listen(PORT, () => {
   logger.info(`Server running on http://${HOST}:${PORT}`);
   logger.info(`Environment: ${env.NODE_ENV}`);
+
+  // Start Telegram polling for local dev
+  startTelegramPolling().catch((error) => {
+    logger.error('Failed to start Telegram polling:', error);
+  });
 
   // Perform health checks on startup
   Promise.all([dbHealthCheck(), redisHealthCheck()])

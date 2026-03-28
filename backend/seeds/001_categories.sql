@@ -156,6 +156,123 @@ INSERT INTO categories (name_english, name_marathi, description, field_template,
     }',
     11,
     true
+),
+(
+    'Quotation',
+    'कोटेशन',
+    'Quotation preparation and tracking',
+    '{
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "quotation_number": {"type": "text", "label_english": "Quotation Number", "label_marathi": "कोटेशन क्रमांक", "required": false},
+        "amount": {"type": "text", "label_english": "Amount", "label_marathi": "रक्कम", "required": false},
+        "description": {"type": "text", "label_english": "Description", "label_marathi": "वर्णन", "required": true},
+        "status": {"type": "select", "label_english": "Status", "label_marathi": "स्थिती", "required": true, "options": ["Draft", "Sent", "Approved", "Rejected", "Revised"]}
+    }',
+    12,
+    true
+),
+(
+    'Tax Invoice',
+    'टॅक्स इनव्हॉइस',
+    'Tax invoice generation and tracking',
+    '{
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "invoice_number": {"type": "text", "label_english": "Invoice Number", "label_marathi": "इनव्हॉइस क्रमांक", "required": false},
+        "amount": {"type": "text", "label_english": "Amount", "label_marathi": "रक्कम", "required": true},
+        "gst_amount": {"type": "text", "label_english": "GST Amount", "label_marathi": "GST रक्कम", "required": false},
+        "description": {"type": "text", "label_english": "Description", "label_marathi": "वर्णन", "required": true},
+        "due_date": {"type": "date", "label_english": "Due Date", "label_marathi": "देय तारीख", "required": false}
+    }',
+    13,
+    true
+),
+(
+    'Outstanding Follow Up',
+    'थकबाकी फॉलो अप',
+    'Outstanding payment follow-up tracking',
+    '{
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "outstanding_amount": {"type": "text", "label_english": "Outstanding Amount", "label_marathi": "थकबाकी रक्कम", "required": true},
+        "invoice_reference": {"type": "text", "label_english": "Invoice Reference", "label_marathi": "इनव्हॉइस संदर्भ", "required": false},
+        "follow_up_date": {"type": "date", "label_english": "Follow Up Date", "label_marathi": "फॉलो अप तारीख", "required": false},
+        "contact_person": {"type": "text", "label_english": "Contact Person", "label_marathi": "संपर्क व्यक्ती", "required": false},
+        "status": {"type": "select", "label_english": "Status", "label_marathi": "स्थिती", "required": true, "options": ["Pending", "Partial Payment", "Promise to Pay", "Disputed", "Collected"]}
+    }',
+    14,
+    true
+),
+(
+    'Pending Approvals',
+    'प्रलंबित मंजुरी',
+    'Tasks and documents pending approval',
+    '{
+        "approval_type": {"type": "select", "label_english": "Approval Type", "label_marathi": "मंजुरी प्रकार", "required": true, "options": ["Purchase Order", "Quotation", "Invoice", "Leave", "Expense", "Other"]},
+        "requested_by": {"type": "text", "label_english": "Requested By", "label_marathi": "विनंती केलेली", "required": true},
+        "description": {"type": "text", "label_english": "Description", "label_marathi": "वर्णन", "required": true},
+        "amount": {"type": "text", "label_english": "Amount (if applicable)", "label_marathi": "रक्कम (लागू असल्यास)", "required": false},
+        "urgency": {"type": "select", "label_english": "Urgency", "label_marathi": "निकड", "required": true, "options": ["High", "Medium", "Low"]}
+    }',
+    15,
+    true
+),
+(
+    'Job Card',
+    'जॉब कार्ड',
+    'Job card creation and tracking for work orders',
+    '{
+        "job_card_number": {"type": "text", "label_english": "Job Card Number", "label_marathi": "जॉब कार्ड क्रमांक", "required": false},
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "work_description": {"type": "text", "label_english": "Work Description", "label_marathi": "कामाचे वर्णन", "required": true},
+        "assigned_to": {"type": "text", "label_english": "Assigned To", "label_marathi": "नियुक्त केलेले", "required": false},
+        "estimated_completion": {"type": "date", "label_english": "Estimated Completion", "label_marathi": "अंदाजे पूर्णता तारीख", "required": false},
+        "status": {"type": "select", "label_english": "Status", "label_marathi": "स्थिती", "required": true, "options": ["Open", "In Progress", "On Hold", "Completed", "Cancelled"]}
+    }',
+    16,
+    true
+),
+(
+    'Delivery Challan',
+    'डिलिव्हरी चलन',
+    'Delivery challan for goods dispatched',
+    '{
+        "challan_number": {"type": "text", "label_english": "Challan Number", "label_marathi": "चलन क्रमांक", "required": false},
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "delivery_address": {"type": "text", "label_english": "Delivery Address", "label_marathi": "डिलिव्हरी पत्ता", "required": true},
+        "items_description": {"type": "text", "label_english": "Items Description", "label_marathi": "वस्तूंचे वर्णन", "required": true},
+        "dispatch_date": {"type": "date", "label_english": "Dispatch Date", "label_marathi": "पाठवणी तारीख", "required": false},
+        "vehicle_number": {"type": "text", "label_english": "Vehicle Number", "label_marathi": "वाहन क्रमांक", "required": false}
+    }',
+    17,
+    true
+),
+(
+    'WCC',
+    'WCC',
+    'Work Completion Certificate tracking',
+    '{
+        "project_name": {"type": "text", "label_english": "Project Name", "label_marathi": "प्रकल्पाचे नाव", "required": true},
+        "customer_name": {"type": "text", "label_english": "Customer Name", "label_marathi": "ग्राहकाचे नाव", "required": true},
+        "completion_date": {"type": "date", "label_english": "Completion Date", "label_marathi": "पूर्णता तारीख", "required": false},
+        "description": {"type": "text", "label_english": "Work Description", "label_marathi": "कामाचे वर्णन", "required": true},
+        "status": {"type": "select", "label_english": "Status", "label_marathi": "स्थिती", "required": true, "options": ["Pending", "Submitted", "Approved", "Rejected"]}
+    }',
+    18,
+    true
+),
+(
+    'Expenses',
+    'खर्च',
+    'Expense tracking and reimbursement',
+    '{
+        "expense_type": {"type": "select", "label_english": "Expense Type", "label_marathi": "खर्चाचा प्रकार", "required": true, "options": ["Travel", "Material", "Food", "Fuel", "Office Supplies", "Miscellaneous"]},
+        "amount": {"type": "text", "label_english": "Amount", "label_marathi": "रक्कम", "required": true},
+        "description": {"type": "text", "label_english": "Description", "label_marathi": "वर्णन", "required": true},
+        "paid_by": {"type": "text", "label_english": "Paid By", "label_marathi": "भरणा केलेला", "required": true},
+        "receipt_available": {"type": "select", "label_english": "Receipt Available", "label_marathi": "पावती उपलब्ध", "required": true, "options": ["Yes", "No"]},
+        "date": {"type": "date", "label_english": "Expense Date", "label_marathi": "खर्चाची तारीख", "required": false}
+    }',
+    19,
+    true
 );
 
 -- Insert default admin user (password: admin123 - change in production!)

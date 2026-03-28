@@ -3,9 +3,17 @@ import path from 'path';
 import fs from 'fs';
 import { reportService } from '../services/report.service';
 import { sendSuccess, sendNotFound, sendBadRequest } from '../utils/response';
-import { AuthenticatedRequest, ReportFilters } from '../types';
+import { AuthenticatedRequest, ReportFilters, UserContext } from '../types';
 
 export class ReportController {
+  private getUserContext(req: AuthenticatedRequest): UserContext {
+    return {
+      user_id: req.user!.user_id,
+      role: req.user!.role,
+      team_id: req.user!.team_id,
+    };
+  }
+
   /**
    * Generate a report
    */
@@ -20,7 +28,8 @@ export class ReportController {
     };
 
     const userId = req.user!.user_id;
-    const { filePath, fileName } = await reportService.generateReport(filters, userId);
+    const userContext = this.getUserContext(req);
+    const { filePath, fileName } = await reportService.generateReport(filters, userId, userContext);
 
     sendSuccess(res, {
       fileName,
@@ -81,7 +90,8 @@ export class ReportController {
     };
 
     const userId = req.user!.user_id;
-    const { filePath, fileName } = await reportService.generateReport(filters, userId);
+    const userContext = this.getUserContext(req);
+    const { filePath, fileName } = await reportService.generateReport(filters, userId, userContext);
 
     sendSuccess(res, {
       fileName,
@@ -116,7 +126,8 @@ export class ReportController {
     };
 
     const userId = req.user!.user_id;
-    const { filePath, fileName } = await reportService.generateReport(filters, userId);
+    const userContext = this.getUserContext(req);
+    const { filePath, fileName } = await reportService.generateReport(filters, userId, userContext);
 
     sendSuccess(res, {
       fileName,
@@ -149,7 +160,8 @@ export class ReportController {
     };
 
     const userId = req.user!.user_id;
-    const { filePath, fileName } = await reportService.generateReport(filters, userId);
+    const userContext = this.getUserContext(req);
+    const { filePath, fileName } = await reportService.generateReport(filters, userId, userContext);
 
     sendSuccess(res, {
       fileName,

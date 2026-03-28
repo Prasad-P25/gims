@@ -1,7 +1,7 @@
 import Bull, { Job } from 'bull';
 import path from 'path';
 import fs from 'fs';
-import { bullRedisConfig } from '../config/redis';
+import { bullRedisConfig, redis } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { query } from '../config/database';
@@ -505,16 +505,27 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
       return;
     }
 
+    // Retrieve the user's original message (stored when category menu was shown)
+    const pendingTextKey = `telegram:pending_text:${chatId}`;
+    const originalText = await redis.get(pendingTextKey);
+    if (originalText) {
+      await redis.del(pendingTextKey);
+    }
+
+    const taskTitle = originalText?.slice(0, 100) || category.name_marathi || category.name_english;
+    const taskDescription = originalText || 'Task created via category selection';
+
     // Create task with the selected category
     const task = await taskService.createTask(
       {
         category_id: categoryId,
         task_data: {
-          title: 'Task from Telegram',
-          description: 'Task created via category selection',
+          title: taskTitle,
+          description: taskDescription,
         },
         input_mode: 'text',
         input_source: 'telegram',
+        original_input: originalText || undefined,
         priority: 'medium',
       },
       userId
@@ -523,7 +534,7 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
     await telegramService.sendTaskConfirmation(chatId, {
       registryId: task.registry_id,
       category: category.name_marathi || category.name_english,
-      summary: 'Task created via category selection',
+      summary: taskTitle,
       date: new Date().toLocaleDateString('en-IN'),
     });
   }
@@ -612,7 +623,8 @@ You can:
       dueDate: extracted.task_data.due_date as string | undefined,
     });
   } else if (extracted.confidence > 0.4) {
-    // Low confidence - ask for clarification with category menu
+    // Low confidence - store original text for when user picks a category
+    await redis.set(`telegram:pending_text:${chatId}`, text, 'EX', 3600);
     await telegramService.sendMessage(
       chatId,
       `🤔 <b>I understood partially...</b>\n\n"${text}"\n\nPlease select a category or provide more details:\n\nकृपया श्रेणी निवडा किंवा अधिक माहिती द्या:`
