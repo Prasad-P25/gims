@@ -17,6 +17,10 @@ router.put('/', asyncHandler(profileController.updateProfile.bind(profileControl
 // Change password
 router.put('/password', asyncHandler(profileController.changePassword.bind(profileController)));
 
+// Active (sticky) project
+router.get('/active-project', asyncHandler(profileController.getActiveProject.bind(profileController)));
+router.put('/active-project', asyncHandler(profileController.setActiveProject.bind(profileController)));
+
 // Generate Telegram link instructions
 router.post('/telegram/link', asyncHandler(profileController.generateTelegramLinkCode.bind(profileController)));
 

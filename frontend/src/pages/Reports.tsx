@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Download, Calendar, Loader2 } from 'lucide-react';
+import { FileText, Download, Calendar, Loader2, FolderKanban } from 'lucide-react';
 import { reportsService } from '../services/reports';
 import { dashboardService } from '../services/dashboard';
+import { projectsService } from '../services/projects';
 
 export default function Reports() {
   const [filters, setFilters] = useState({
@@ -12,10 +13,19 @@ export default function Reports() {
     status: '',
   });
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
+  const [projectFilters, setProjectFilters] = useState({
+    project_id: '',
+    include_task_details: true,
+  });
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: dashboardService.getCategories,
+  });
+
+  const { data: myProjects } = useQuery({
+    queryKey: ['my-projects'],
+    queryFn: projectsService.mine,
   });
 
   const handleFilterChange = (key: string, value: string) => {
@@ -58,6 +68,39 @@ export default function Reports() {
     } catch (error: any) {
       console.error('Failed to generate report:', error);
       const message = error.response?.data?.error || error.message || 'Failed to generate report. Please try again.';
+      alert(message);
+    } finally {
+      setIsGenerating(null);
+    }
+  };
+
+  const handleGenerateProjectReport = async () => {
+    if (!projectFilters.project_id) {
+      alert('Please select a project');
+      return;
+    }
+
+    setIsGenerating('project');
+    try {
+      const { blob, fileName } = await reportsService.generateProjectReport({
+        project_id: projectFilters.project_id,
+        date_from: filters.start_date || undefined,
+        date_to: filters.end_date || undefined,
+        status: filters.status || undefined,
+        category_id: filters.category_id ? parseInt(filters.category_id) : undefined,
+        include_task_details: projectFilters.include_task_details,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      const message = error.response?.data?.error || error.message || 'Failed to generate project report.';
       alert(message);
     } finally {
       setIsGenerating(null);
@@ -243,6 +286,78 @@ export default function Reports() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Project Report card */}
+      <div className="card">
+        <div className="flex items-start">
+          <div className="p-3 bg-indigo-100 rounded-lg">
+            <FolderKanban className="h-8 w-8 text-indigo-600" />
+          </div>
+          <div className="ml-4 flex-1">
+            <h3 className="text-lg font-semibold text-gray-900">Project Report</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Generate a PDF report for a single project — overview, stats, per-team breakdown, and task list.
+              Uses the same date, category, and status filters selected above.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Project *</label>
+                <select
+                  value={projectFilters.project_id}
+                  onChange={(e) =>
+                    setProjectFilters((prev) => ({ ...prev, project_id: e.target.value }))
+                  }
+                  className="input"
+                >
+                  <option value="">— Select a project —</option>
+                  {myProjects?.map((p) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.name_english}
+                      {p.name_marathi ? ` / ${p.name_marathi}` : ''}
+                      {p.status !== 'active' ? ` (${p.status})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={projectFilters.include_task_details}
+                    onChange={(e) =>
+                      setProjectFilters((prev) => ({
+                        ...prev,
+                        include_task_details: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 text-primary-600 rounded"
+                  />
+                  Include full task list (otherwise overview + team breakdown only)
+                </label>
+              </div>
+            </div>
+
+            <button
+              onClick={handleGenerateProjectReport}
+              disabled={isGenerating !== null}
+              className="btn-primary mt-4 inline-flex items-center"
+            >
+              {isGenerating === 'project' ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Project Report
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

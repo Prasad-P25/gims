@@ -1,13 +1,14 @@
 import Bull, { Job } from 'bull';
 import path from 'path';
 import fs from 'fs';
-import { bullRedisConfig } from '../config/redis';
+import { bullRedisConfig, redis } from '../config/redis';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { query } from '../config/database';
 import { whatsappService } from '../services/whatsapp.service';
 import { geminiService } from '../services/gemini.service';
 import { taskService } from '../services/task.service';
+import { projectService } from '../services/project.service';
 import { WhatsAppMessage } from '../types';
 
 // Helper function to get user by phone or return default admin
@@ -46,6 +47,92 @@ interface MessageJobData {
     profile: { name: string };
     wa_id: string;
   };
+}
+
+// Fetch projects visible to this user for picker UX (active/on_hold only, capped at 10 for WhatsApp list rows).
+async function getProjectsForWhatsAppUser(
+  userId: string
+): Promise<Array<{ project_id: string; name_english: string; name_marathi: string | null; status: string }>> {
+  const r = await query<{ team_id: string | null; role: string }>(
+    'SELECT team_id, role FROM users WHERE user_id = $1',
+    [userId]
+  );
+  const teamId = r.rows[0]?.team_id;
+  const role = r.rows[0]?.role;
+
+  if (role === 'super_admin') {
+    const all = await projectService.listProjects({ user_id: userId, role: 'super_admin' }, 'active');
+    return all.slice(0, 10).map((p) => ({
+      project_id: p.project_id,
+      name_english: p.name_english,
+      name_marathi: p.name_marathi ?? null,
+      status: p.status,
+    }));
+  }
+  if (!teamId) return [];
+  const mine = await projectService.getMyProjects(teamId);
+  return mine
+    .filter((p) => p.status === 'active' || p.status === 'on_hold')
+    .slice(0, 10)
+    .map((p) => ({
+      project_id: p.project_id,
+      name_english: p.name_english,
+      name_marathi: p.name_marathi ?? null,
+      status: p.status,
+    }));
+}
+
+// Send a WhatsApp interactive list of projects. Row IDs get a prefix so the reply handler can dispatch.
+async function sendProjectPickerWhatsApp(
+  to: string,
+  projects: Array<{ project_id: string; name_english: string; name_marathi: string | null }>,
+  idPrefix: 'setproj' | 'projpick',
+  bodyText: string,
+  headerText: string
+): Promise<void> {
+  const rows = projects.map((p) => ({
+    id: `${idPrefix}_${p.project_id}`,
+    title: (p.name_marathi || p.name_english).slice(0, 24),
+    description: p.name_english.slice(0, 72),
+  }));
+  rows.push({
+    id: `${idPrefix}_none`,
+    title: idPrefix === 'setproj' ? 'Clear active' : 'Skip',
+    description: idPrefix === 'setproj' ? 'Remove sticky project' : 'Save without project',
+  });
+
+  await whatsappService.sendInteractiveList(
+    to,
+    bodyText,
+    'Select',
+    [{ title: 'Projects', rows }],
+    headerText
+  );
+}
+
+// After task creation, if resolution is ambiguous, stash registry_id + prompt user to pick.
+async function maybePromptProjectPickWhatsApp(
+  from: string,
+  registryId: string,
+  resolution?: { reason?: string; candidates?: Array<{ project_id: string; name_english: string; name_marathi?: string | null }> }
+): Promise<void> {
+  if (!resolution || resolution.reason !== 'ambiguous') return;
+  const candidates = resolution.candidates || [];
+  if (candidates.length === 0) return;
+
+  await redis.set(`whatsapp:proj_pick:${from}`, registryId, 'EX', 600);
+
+  await sendProjectPickerWhatsApp(
+    from,
+    candidates.map((c) => ({
+      project_id: c.project_id,
+      name_english: c.name_english,
+      name_marathi: c.name_marathi ?? null,
+    })),
+    'projpick',
+    'Your team is part of multiple projects. Which project is this task for?\n\nतुमची टीम अनेक प्रकल्पांचा भाग आहे. हे कार्य कोणत्या प्रकल्पासाठी आहे?',
+    'Select Project'
+  );
 }
 
 interface VoiceProcessJobData {
@@ -172,6 +259,31 @@ async function processTextMessage(
     return;
   }
 
+  // "project" / "प्रकल्प" — set sticky active project via interactive list
+  if (text.toLowerCase() === 'project' || text === 'प्रकल्प') {
+    const userId = await getUserIdByPhone(from);
+    if (!userId) {
+      await whatsappService.sendTextMessage(from, '❌ Your phone is not linked to a GIMS account.');
+      return;
+    }
+    const projects = await getProjectsForWhatsAppUser(userId);
+    if (projects.length === 0) {
+      await whatsappService.sendTextMessage(
+        from,
+        '📁 No projects available for you yet.\n\nतुमच्यासाठी कोणतेही प्रकल्प उपलब्ध नाहीत.'
+      );
+      return;
+    }
+    await sendProjectPickerWhatsApp(
+      from,
+      projects,
+      'setproj',
+      'Set your active project. New tasks you register will auto-tag to it.\n\nसक्रिय प्रकल्प निवडा. नवीन कार्ये त्याच्याशी स्वयंचलितपणे जोडली जातील.',
+      'Active Project'
+    );
+    return;
+  }
+
   // Try to extract task from natural language
   const categories = await taskService.getCategories();
   const extracted = await geminiService.extractTaskData(text, categories, 'marathi');
@@ -198,6 +310,7 @@ async function processTextMessage(
       summary: extracted.summary,
       date: new Date().toLocaleDateString('en-IN'),
     });
+    await maybePromptProjectPickWhatsApp(from, task.registry_id, task._projectResolution);
   } else {
     // Ask for clarification
     const clarification = await geminiService.generateResponse(
@@ -246,8 +359,139 @@ async function processInteractiveMessage(
   message: WhatsAppMessage,
   contact?: { profile: { name: string }; wa_id: string }
 ): Promise<void> {
-  // TODO: Handle interactive responses (category selection, confirmations)
-  logger.info('Interactive message received', { message });
+  const from = message.from;
+  const replyId =
+    message.interactive?.list_reply?.id ||
+    message.interactive?.button_reply?.id ||
+    '';
+
+  logger.info('Interactive message received', { from, replyId, type: message.interactive?.type });
+
+  if (!replyId) return;
+
+  // "Set sticky active project" flow — from typing `project`
+  if (replyId.startsWith('setproj_')) {
+    const target = replyId.slice('setproj_'.length);
+    const userId = await getUserIdByPhone(from);
+    if (!userId) {
+      await whatsappService.sendTextMessage(from, '❌ Phone not linked to a GIMS account.');
+      return;
+    }
+
+    if (target === 'none') {
+      await query('UPDATE users SET active_project_id = NULL, updated_at = NOW() WHERE user_id = $1', [userId]);
+      await whatsappService.sendTextMessage(from, '✅ Active project cleared.\n\nसक्रिय प्रकल्प रद्द केला.');
+      return;
+    }
+
+    const userRow = await query<{ team_id: string | null; role: string }>(
+      'SELECT team_id, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+    if (userRow.rows[0]?.role !== 'super_admin') {
+      const teamId = userRow.rows[0]?.team_id;
+      if (!teamId || !(await projectService.isTeamInProject(target, teamId))) {
+        await whatsappService.sendTextMessage(from, '❌ Your team is not assigned to that project.');
+        return;
+      }
+    }
+
+    const projRow = await query<{ name_english: string; name_marathi: string | null }>(
+      'SELECT name_english, name_marathi FROM projects WHERE project_id = $1 AND deleted_at IS NULL',
+      [target]
+    );
+    if (projRow.rows.length === 0) {
+      await whatsappService.sendTextMessage(from, '❌ That project no longer exists.');
+      return;
+    }
+
+    await query('UPDATE users SET active_project_id = $1, updated_at = NOW() WHERE user_id = $2', [target, userId]);
+    const pname = projRow.rows[0].name_marathi || projRow.rows[0].name_english;
+    await whatsappService.sendTextMessage(
+      from,
+      `✅ Active project set: *${pname}*\n\nसक्रिय प्रकल्प सेट केला.\n\nNew tasks will auto-tag to this project until you change it by typing \`project\`.`
+    );
+    return;
+  }
+
+  // "Which project is this task for?" ambiguous fallback
+  if (replyId.startsWith('projpick_')) {
+    const target = replyId.slice('projpick_'.length);
+    const userId = await getUserIdByPhone(from);
+    if (!userId) {
+      await whatsappService.sendTextMessage(from, '❌ Phone not linked.');
+      return;
+    }
+
+    const pickKey = `whatsapp:proj_pick:${from}`;
+    const registryId = await redis.get(pickKey);
+    if (!registryId) {
+      await whatsappService.sendTextMessage(
+        from,
+        '⌛ That prompt expired. Type `project` to set your active project; new tasks will then auto-tag.'
+      );
+      return;
+    }
+
+    if (target === 'none') {
+      await redis.del(pickKey);
+      await whatsappService.sendTextMessage(from, '👍 Task saved without a project.\n\nकार्य प्रकल्पाशिवाय जतन केले.');
+      return;
+    }
+
+    const taskRow = await query<{ project_id: string | null }>(
+      `SELECT project_id FROM task_registry
+       WHERE registry_id = $1 AND deleted_at IS NULL
+         AND (registered_by = $2 OR assigned_to = $2)`,
+      [registryId, userId]
+    );
+    if (taskRow.rows.length === 0) {
+      await redis.del(pickKey);
+      await whatsappService.sendTextMessage(from, '❌ That task is no longer available.');
+      return;
+    }
+    if (taskRow.rows[0].project_id) {
+      await redis.del(pickKey);
+      await whatsappService.sendTextMessage(from, 'ℹ️ That task already has a project set.');
+      return;
+    }
+
+    const userRow = await query<{ team_id: string | null; role: string }>(
+      'SELECT team_id, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+    if (userRow.rows[0]?.role !== 'super_admin') {
+      const teamId = userRow.rows[0]?.team_id;
+      if (!teamId || !(await projectService.isTeamInProject(target, teamId))) {
+        await redis.del(pickKey);
+        await whatsappService.sendTextMessage(from, '❌ You do not have access to that project.');
+        return;
+      }
+    }
+
+    const projRow = await query<{ name_english: string; name_marathi: string | null }>(
+      'SELECT name_english, name_marathi FROM projects WHERE project_id = $1 AND deleted_at IS NULL',
+      [target]
+    );
+    if (projRow.rows.length === 0) {
+      await redis.del(pickKey);
+      await whatsappService.sendTextMessage(from, '❌ That project no longer exists.');
+      return;
+    }
+
+    await query('UPDATE task_registry SET project_id = $1, updated_at = NOW() WHERE registry_id = $2', [target, registryId]);
+    await query('UPDATE users SET active_project_id = $1, updated_at = NOW() WHERE user_id = $2', [target, userId]);
+    await redis.del(pickKey);
+
+    const pname = projRow.rows[0].name_marathi || projRow.rows[0].name_english;
+    await whatsappService.sendTextMessage(
+      from,
+      `✅ Tagged to: *${pname}*\n\nकार्य प्रकल्पाशी जोडले.\n\nFuture tasks will auto-tag to this project.`
+    );
+    return;
+  }
+
+  logger.info('Unhandled interactive reply', { replyId });
 }
 
 // Process voice messages
@@ -310,6 +554,7 @@ voiceQueue.process(async (job: Job<VoiceProcessJobData>) => {
         summary: extracted.summary,
         date: new Date().toLocaleDateString('en-IN'),
       });
+      await maybePromptProjectPickWhatsApp(from, task.registry_id, task._projectResolution);
     } else {
       // Send transcription and ask for clarification
       await whatsappService.sendTextMessage(

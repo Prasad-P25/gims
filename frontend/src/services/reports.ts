@@ -65,4 +65,31 @@ export const reportsService = {
 
     return downloadResponse.data;
   },
+
+  async generateProjectReport(params: {
+    project_id: string;
+    date_from?: string;
+    date_to?: string;
+    status?: string;
+    category_id?: number;
+    include_task_details?: boolean;
+  }): Promise<{ blob: Blob; fileName: string }> {
+    const response = await api.get('/reports/project', {
+      params: {
+        project_id: params.project_id,
+        date_from: params.date_from || undefined,
+        date_to: params.date_to || undefined,
+        status: params.status || undefined,
+        category_id: params.category_id || undefined,
+        include_task_details: params.include_task_details ?? true,
+      },
+    });
+
+    const { fileName, downloadUrl } = response.data;
+    const downloadResponse = await api.get(downloadUrl, {
+      responseType: 'blob',
+    });
+
+    return { blob: downloadResponse.data, fileName };
+  },
 };

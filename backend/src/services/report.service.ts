@@ -5,9 +5,19 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { taskService } from './task.service';
+import { projectService } from './project.service';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
-import { ReportFilters, TaskRegistry, Category, UserContext } from '../types';
+import { ReportFilters, TaskRegistry, Category, UserContext, ProjectDashboardStats, TaskStatus } from '../types';
+
+export interface ProjectReportFilters {
+  project_id: string;
+  date_from?: Date;
+  date_to?: Date;
+  status?: TaskStatus;
+  category_id?: number;
+  include_task_details?: boolean;
+}
 
 interface ReportData {
   tasks: TaskRegistry[];
@@ -645,6 +655,397 @@ export class ReportService {
       date_to: endOfDay,
       include_summary: true,
     });
+  }
+
+  /**
+   * Generate a project-scoped PDF report.
+   * Returns null if the user has no access to the project.
+   */
+  async generateProjectReport(
+    filters: ProjectReportFilters,
+    userContext: UserContext
+  ): Promise<{ filePath: string; fileName: string } | null> {
+    // 1. Get project dashboard data (applies access filter)
+    const dashboard = await projectService.getDashboard(filters.project_id, {
+      user_id: userContext.user_id,
+      role: userContext.role,
+      team_id: userContext.team_id,
+    });
+    if (!dashboard) return null;
+
+    // 2. Fetch tasks for this project with filters
+    const { tasks } = await taskService.getTasks(
+      {
+        project_id: filters.project_id,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        status: filters.status,
+        category_id: filters.category_id,
+      },
+      { page: 1, limit: 10000 },
+      userContext
+    );
+
+    const includeTasks = filters.include_task_details !== false;
+    return this.generateProjectPDF(dashboard, tasks, filters, includeTasks);
+  }
+
+  /**
+   * PDF generation for a single project.
+   * Pages: 1) overview + stats + status bar, 2) team breakdown, 3+) task cards.
+   */
+  private async generateProjectPDF(
+    dashboard: ProjectDashboardStats,
+    tasks: TaskRegistry[],
+    filters: ProjectReportFilters,
+    includeTasks: boolean
+  ): Promise<{ filePath: string; fileName: string }> {
+    const project = dashboard.project;
+    const safeName = project.name_english.replace(/[^a-zA-Z0-9]+/g, '_').substring(0, 40);
+    const fileName = `gims_project_${safeName}_${Date.now()}.pdf`;
+    const filePath = path.join(this.reportsDir, fileName);
+    const generatedAt = new Date();
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 40, size: 'A4', autoFirstPage: true });
+      const writeStream = fs.createWriteStream(filePath);
+      const pageHeight = doc.page.height;
+      const pageWidth = doc.page.width;
+      let currentPage = 1;
+      const generatedTime = this.formatDateTime(generatedAt);
+
+      // Register Devanagari font
+      let hasDevanagariFont = false;
+      try {
+        if (fs.existsSync(this.devanagariFont)) {
+          doc.registerFont('Devanagari', this.devanagariFont);
+          hasDevanagariFont = true;
+        }
+      } catch (err) {
+        logger.warn('Failed to register Devanagari font', { error: err });
+      }
+
+      const drawText = (text: string, x: number, y: number, options?: any) => {
+        if (!hasDevanagariFont || !this.containsDevanagari(text)) {
+          doc.font('Helvetica');
+          doc.text(text, x, y, options);
+          return;
+        }
+        const segments = text.match(/[\u0900-\u097F\u0980-\u09FF]+|[^\u0900-\u097F\u0980-\u09FF]+/g) || [text];
+        let currentX = x;
+        segments.forEach((segment, idx) => {
+          doc.font(this.containsDevanagari(segment) ? 'Devanagari' : 'Helvetica');
+          const segWidth = doc.widthOfString(segment);
+          if (idx === 0) {
+            doc.text(segment, currentX, y, { ...options, lineBreak: false, continued: idx < segments.length - 1 });
+          } else {
+            doc.text(segment, { lineBreak: false, continued: idx < segments.length - 1 });
+          }
+          currentX += segWidth;
+        });
+        doc.font('Helvetica');
+      };
+
+      const drawFooter = (pageNum: number) => {
+        doc.save();
+        doc.font('Helvetica');
+        doc.moveTo(40, pageHeight - 45).lineTo(pageWidth - 40, pageHeight - 45).stroke('#e5e7eb');
+        doc.fontSize(8).fillColor('#6b7280');
+        const footerText = `Page ${pageNum} | GIMS Project Report | ${generatedTime}`;
+        const textWidth = doc.widthOfString(footerText);
+        doc.text(footerText, (pageWidth - textWidth) / 2, pageHeight - 35, { lineBreak: false });
+        doc.restore();
+      };
+
+      doc.pipe(writeStream);
+
+      // ===== PAGE 1: PROJECT OVERVIEW =====
+
+      // Header banner
+      doc.rect(0, 0, pageWidth, 120).fill(this.colors.primary);
+      doc.fontSize(24).fillColor('#ffffff');
+      doc.text('Project Report', 40, 30, { align: 'center', width: pageWidth - 80 });
+
+      // Project name in header (Marathi-aware)
+      doc.fontSize(14).fillColor('#dbeafe');
+      drawText(project.name_english, 40, 65, { align: 'center', width: pageWidth - 80 });
+      if (project.name_marathi) {
+        doc.fontSize(11).fillColor('#bfdbfe');
+        drawText(project.name_marathi, 40, 88, { align: 'center', width: pageWidth - 80 });
+      }
+
+      // Status badge
+      const statusColor = this.getProjectStatusColor(project.status);
+      doc.roundedRect(pageWidth / 2 - 45, 100, 90, 16, 3).fill(statusColor);
+      doc.fontSize(9).fillColor('#ffffff');
+      doc.text(project.status.replace('_', ' ').toUpperCase(), pageWidth / 2 - 45, 103, { align: 'center', width: 90 });
+
+      // Project info box
+      const infoY = 140;
+      const infoH = 110;
+      doc.roundedRect(40, infoY, pageWidth - 80, infoH, 5).fill('#f3f4f6');
+      doc.fontSize(10).fillColor('#374151');
+
+      const startDate = project.start_date ? this.formatDate(new Date(project.start_date)) : '—';
+      const endDate = project.end_date ? this.formatDate(new Date(project.end_date)) : '—';
+      const budget = project.budget ? `₹ ${Number(project.budget).toLocaleString('en-IN')}` : '—';
+
+      doc.text(`Dates:`, 55, infoY + 15);
+      doc.fillColor('#111827').text(`${startDate}  →  ${endDate}`, 115, infoY + 15);
+      doc.fillColor('#374151').text(`Location:`, 55, infoY + 33);
+      doc.fillColor('#111827');
+      drawText(project.location || '—', 115, infoY + 33, { width: 250, lineBreak: false });
+      doc.fillColor('#374151').text(`Budget:`, 55, infoY + 51);
+      doc.fillColor('#111827').text(budget, 115, infoY + 51);
+
+      // Contact (right column)
+      doc.fillColor('#374151').text(`Contact:`, 320, infoY + 15);
+      doc.fillColor('#111827').text(project.contact_person_name || '—', 370, infoY + 15);
+      if (project.contact_person_phone) {
+        doc.fillColor('#374151').text(`Phone:`, 320, infoY + 33);
+        doc.fillColor('#111827').text(project.contact_person_phone, 370, infoY + 33);
+      }
+      if (project.contact_person_email) {
+        doc.fillColor('#374151').text(`Email:`, 320, infoY + 51);
+        doc.fillColor('#111827').text(project.contact_person_email, 370, infoY + 51);
+      }
+      doc.fillColor('#374151').text(`Generated:`, 55, infoY + 80);
+      doc.fillColor('#111827').text(generatedTime, 115, infoY + 80);
+
+      // Filters applied
+      const filterParts: string[] = [];
+      if (filters.date_from) filterParts.push(`From: ${this.formatDate(new Date(filters.date_from))}`);
+      if (filters.date_to) filterParts.push(`To: ${this.formatDate(new Date(filters.date_to))}`);
+      if (filters.status) filterParts.push(`Status: ${filters.status}`);
+      if (filters.category_id) filterParts.push(`Category: ${filters.category_id}`);
+      if (filterParts.length > 0) {
+        doc.fillColor('#374151').text(`Filters:`, 320, infoY + 80);
+        doc.fillColor('#111827').fontSize(9).text(filterParts.join(' • '), 370, infoY + 80, { width: 200 });
+      }
+
+      // ===== STAT CARDS (6 cards) =====
+      const cardY = infoY + infoH + 25;
+      const cardWidth = (pageWidth - 80) / 6;
+      const cardHeight = 65;
+      const cardGap = 6;
+
+      this.drawStatCard(doc, 40, cardY, cardWidth - cardGap, cardHeight, 'Total', String(dashboard.total_tasks), this.colors.primary);
+      this.drawStatCard(doc, 40 + cardWidth, cardY, cardWidth - cardGap, cardHeight, 'Pending', String(dashboard.pending_tasks), this.colors.pending);
+      this.drawStatCard(doc, 40 + cardWidth * 2, cardY, cardWidth - cardGap, cardHeight, 'In Progress', String(dashboard.in_progress_tasks), this.colors.inProgress);
+      this.drawStatCard(doc, 40 + cardWidth * 3, cardY, cardWidth - cardGap, cardHeight, 'Completed', String(dashboard.completed_tasks), this.colors.completed);
+      this.drawStatCard(doc, 40 + cardWidth * 4, cardY, cardWidth - cardGap, cardHeight, 'Cancelled', String(dashboard.cancelled_tasks), this.colors.cancelled);
+      this.drawStatCard(doc, 40 + cardWidth * 5, cardY, cardWidth - cardGap, cardHeight, 'Overdue', String(dashboard.overdue_tasks), this.colors.danger);
+
+      // ===== PROGRESS BAR =====
+      const progY = cardY + cardHeight + 25;
+      doc.fontSize(12).fillColor('#1f2937').text('Overall Progress', 40, progY);
+      doc.fontSize(10).fillColor('#6b7280').text(
+        `${dashboard.completed_tasks} / ${dashboard.total_tasks} tasks  ·  ${dashboard.progress_percent}%`,
+        40, progY + 16
+      );
+
+      const progBarY = progY + 35;
+      const progBarW = pageWidth - 80;
+      const progBarH = 18;
+      doc.roundedRect(40, progBarY, progBarW, progBarH, 3).fill('#e5e7eb');
+      if (dashboard.progress_percent > 0) {
+        const fillW = Math.max(4, (dashboard.progress_percent / 100) * progBarW);
+        doc.roundedRect(40, progBarY, fillW, progBarH, 3).fill(this.colors.completed);
+      }
+
+      // ===== STATUS DISTRIBUTION BAR =====
+      const distY = progBarY + progBarH + 30;
+      doc.fontSize(12).fillColor('#1f2937').text('Status Distribution', 40, distY);
+
+      const distBarY = distY + 20;
+      const distBarH = 22;
+      const total = dashboard.total_tasks || 1;
+      doc.roundedRect(40, distBarY, progBarW, distBarH, 3).fill('#e5e7eb');
+
+      let currentX = 40;
+      const segments: Array<[number, string]> = [
+        [dashboard.completed_tasks, this.colors.completed],
+        [dashboard.in_progress_tasks, this.colors.inProgress],
+        [dashboard.pending_tasks, this.colors.pending],
+        [dashboard.cancelled_tasks, this.colors.cancelled],
+      ];
+      segments.forEach(([count, color]) => {
+        if (count > 0) {
+          const w = (count / total) * progBarW;
+          doc.rect(currentX, distBarY, w, distBarH).fill(color);
+          currentX += w;
+        }
+      });
+
+      const legendY = distBarY + distBarH + 15;
+      this.drawLegendItem(doc, 40, legendY, this.colors.completed, `Completed (${dashboard.completed_tasks})`);
+      this.drawLegendItem(doc, 170, legendY, this.colors.inProgress, `In Progress (${dashboard.in_progress_tasks})`);
+      this.drawLegendItem(doc, 300, legendY, this.colors.pending, `Pending (${dashboard.pending_tasks})`);
+      this.drawLegendItem(doc, 420, legendY, this.colors.cancelled, `Cancelled (${dashboard.cancelled_tasks})`);
+
+      drawFooter(currentPage);
+
+      // ===== PAGE 2: TEAM BREAKDOWN =====
+      if (dashboard.per_team_breakdown.length > 0) {
+        currentPage++;
+        doc.addPage();
+        doc.rect(0, 0, pageWidth, 50).fill(this.colors.primary);
+        doc.fontSize(18).fillColor('#ffffff');
+        doc.text('Team Breakdown', 40, 18, { align: 'center', width: pageWidth - 80 });
+
+        // Teams summary cards (one per team)
+        let teamY = 70;
+        const teamCardH = 70;
+
+        dashboard.per_team_breakdown.forEach((team) => {
+          if (teamY + teamCardH > pageHeight - 60) {
+            drawFooter(currentPage);
+            currentPage++;
+            doc.addPage();
+            doc.rect(0, 0, pageWidth, 50).fill(this.colors.primary);
+            doc.fontSize(18).fillColor('#ffffff');
+            doc.text('Team Breakdown (continued)', 40, 18, { align: 'center', width: pageWidth - 80 });
+            teamY = 70;
+          }
+
+          const memberInfo = dashboard.teams.find((t) => t.team_id === team.team_id);
+          const memberCount = memberInfo?.member_count || 0;
+          const teamProgress = team.task_count > 0
+            ? Math.round((team.completed_count / team.task_count) * 100)
+            : 0;
+
+          // Card
+          doc.roundedRect(40, teamY, pageWidth - 80, teamCardH, 5).fillAndStroke('#fafafa', '#e5e7eb');
+
+          // Team name + member count
+          doc.fontSize(12).fillColor('#111827');
+          drawText(team.team_name, 55, teamY + 10, { lineBreak: false });
+          doc.fontSize(9).fillColor('#6b7280');
+          doc.text(`${memberCount} member${memberCount !== 1 ? 's' : ''}`, 55, teamY + 28);
+
+          // Task counts (right side)
+          doc.fontSize(10).fillColor('#374151');
+          doc.text(`Total: ${team.task_count}`, pageWidth - 230, teamY + 10);
+          doc.fillColor(this.colors.completed).text(`Completed: ${team.completed_count}`, pageWidth - 230, teamY + 28);
+          doc.fillColor('#6b7280').fontSize(9).text(`${teamProgress}% complete`, pageWidth - 100, teamY + 10);
+
+          // Progress bar
+          const tbarY = teamY + 48;
+          const tbarW = pageWidth - 110;
+          doc.roundedRect(55, tbarY, tbarW, 12, 2).fill('#e5e7eb');
+          if (teamProgress > 0) {
+            const w = Math.max(4, (teamProgress / 100) * tbarW);
+            doc.roundedRect(55, tbarY, w, 12, 2).fill(this.colors.completed);
+          }
+
+          teamY += teamCardH + 10;
+        });
+
+        drawFooter(currentPage);
+      }
+
+      // ===== PAGE 3+: TASK DETAILS =====
+      if (includeTasks && tasks.length > 0) {
+        currentPage++;
+        doc.addPage();
+        doc.rect(0, 0, pageWidth, 50).fill(this.colors.primary);
+        doc.fontSize(18).fillColor('#ffffff');
+        doc.text(`Tasks (${tasks.length})`, 40, 18, { align: 'center', width: pageWidth - 80 });
+
+        let yPos = 70;
+        const taskCardHeight = 85;
+        const maxYBeforeNewPage = pageHeight - 60;
+
+        tasks.forEach((task, index) => {
+          if (yPos + taskCardHeight > maxYBeforeNewPage) {
+            drawFooter(currentPage);
+            currentPage++;
+            doc.addPage();
+            doc.rect(0, 0, pageWidth, 50).fill(this.colors.primary);
+            doc.fontSize(18).fillColor('#ffffff');
+            doc.text('Tasks (continued)', 40, 18, { align: 'center', width: pageWidth - 80 });
+            yPos = 70;
+          }
+
+          doc.roundedRect(40, yPos, pageWidth - 80, taskCardHeight, 5).fillAndStroke('#fafafa', '#e5e7eb');
+
+          // Number badge
+          doc.roundedRect(50, yPos + 10, 30, 20, 3).fill(this.colors.primary);
+          doc.fontSize(10).fillColor('#ffffff');
+          doc.text(`${index + 1}`, 50, yPos + 14, { width: 30, align: 'center' });
+
+          // ID + date
+          doc.fontSize(11).fillColor('#1f2937');
+          doc.text(`ID: ${task.registry_id.substring(0, 8)}`, 90, yPos + 12);
+          doc.fontSize(9).fillColor('#6b7280');
+          doc.text(this.formatDate(new Date(task.registration_date)), 400, yPos + 12);
+
+          // Status + priority badges
+          const statusC = this.getStatusColor(task.status);
+          doc.roundedRect(90, yPos + 32, 70, 18, 3).fill(statusC);
+          doc.fontSize(8).fillColor('#ffffff');
+          doc.text(task.status.toUpperCase(), 90, yPos + 36, { width: 70, align: 'center' });
+
+          const priorityC = this.getPriorityColor(task.priority);
+          doc.roundedRect(170, yPos + 32, 60, 18, 3).fill(priorityC);
+          doc.fontSize(8).fillColor('#ffffff');
+          doc.text(task.priority.toUpperCase(), 170, yPos + 36, { width: 60, align: 'center' });
+
+          // Category
+          doc.fontSize(9).fillColor('#4b5563');
+          const categoryName = (task as any).category_name_marathi
+            || (task as any).category_name_english
+            || `Category ${task.category_id}`;
+          drawText(`Category: ${categoryName}`, 250, yPos + 35, { lineBreak: false });
+
+          // Title
+          const taskData = task.task_data as Record<string, unknown>;
+          const title = taskData?.title || taskData?.issue_description || taskData?.description || '';
+          const displayTitle = String(title).substring(0, 80);
+          doc.fontSize(9).fillColor('#374151');
+          drawText(displayTitle + (String(title).length > 80 ? '...' : ''), 90, yPos + 58, {
+            width: pageWidth - 150,
+            ellipsis: true,
+          });
+
+          yPos += taskCardHeight + 8;
+        });
+
+        drawFooter(currentPage);
+      } else if (includeTasks && tasks.length === 0) {
+        currentPage++;
+        doc.addPage();
+        doc.rect(0, 0, pageWidth, 50).fill(this.colors.primary);
+        doc.fontSize(18).fillColor('#ffffff');
+        doc.text('Tasks', 40, 18, { align: 'center', width: pageWidth - 80 });
+
+        doc.fontSize(12).fillColor('#6b7280');
+        doc.text('No tasks found for the selected filters.', 40, 90, { align: 'center', width: pageWidth - 80 });
+
+        drawFooter(currentPage);
+      }
+
+      doc.end();
+
+      writeStream.on('finish', () => {
+        logger.info('Project PDF report generated', { fileName, projectId: project.project_id });
+        resolve({ filePath, fileName });
+      });
+      writeStream.on('error', reject);
+    });
+  }
+
+  /**
+   * Get color for project status.
+   */
+  private getProjectStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      active: this.colors.completed,
+      on_hold: this.colors.pending,
+      completed: this.colors.inProgress,
+      archived: this.colors.secondary,
+    };
+    return colors[status] || this.colors.secondary;
   }
 
   /**

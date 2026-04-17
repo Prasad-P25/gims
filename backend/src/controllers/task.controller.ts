@@ -22,6 +22,7 @@ export class TaskController {
       registered_by: req.query.registered_by as string,
       assigned_to: req.query.assigned_to as string,
       team_id: req.query.team_id as string,
+      project_id: req.query.project_id as string,
       date_from: req.query.date_from ? new Date(req.query.date_from as string) : undefined,
       date_to: req.query.date_to ? new Date(req.query.date_to as string) : undefined,
       search: req.query.search as string,

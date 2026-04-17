@@ -14,9 +14,11 @@ import {
   CheckCircle,
   AlertCircle,
   Copy,
+  FolderKanban,
 } from 'lucide-react';
 import { profileService } from '../services/profile';
 import type { UserProfile, UpdateProfileData, ChangePasswordData } from '../services/profile';
+import { projectsService } from '../services/projects';
 import { cn } from '../lib/utils';
 
 export default function Profile() {
@@ -39,6 +41,38 @@ export default function Profile() {
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ['profile'],
     queryFn: profileService.getProfile,
+  });
+
+  // Fetch active project
+  const { data: activeProjectResp } = useQuery({
+    queryKey: ['active-project'],
+    queryFn: profileService.getActiveProject,
+  });
+  const activeProject = activeProjectResp?.active_project || null;
+
+  // Fetch projects the user's team is in (dropdown source)
+  const { data: myProjects } = useQuery({
+    queryKey: ['my-projects'],
+    queryFn: projectsService.mine,
+  });
+
+  const setActiveProjectMutation = useMutation({
+    mutationFn: (projectId: string | null) => profileService.setActiveProject(projectId),
+    onSuccess: (resp) => {
+      queryClient.invalidateQueries({ queryKey: ['active-project'] });
+      setMessage({
+        type: 'success',
+        text: resp.message || (resp.active_project ? 'Active project updated' : 'Active project cleared'),
+      });
+      setTimeout(() => setMessage(null), 3000);
+    },
+    onError: (error: any) => {
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || 'Failed to update active project',
+      });
+      setTimeout(() => setMessage(null), 5000);
+    },
   });
 
   // Sync profile data when fetched
@@ -323,6 +357,70 @@ export default function Profile() {
               Change Password
             </button>
           </form>
+        </div>
+
+        {/* Active Project */}
+        <div className="card lg:col-span-2">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <FolderKanban className="h-5 w-5 text-primary-600" />
+            Active Project
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Set your current active project. New tasks you create (via web, Telegram, or WhatsApp)
+            will be auto-tagged to this project — so you don't have to choose every time.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <select
+              value={activeProject?.project_id || ''}
+              onChange={(e) => setActiveProjectMutation.mutate(e.target.value || null)}
+              disabled={setActiveProjectMutation.isPending}
+              className="input flex-1"
+            >
+              <option value="">— None (tasks stay unassigned) —</option>
+              {myProjects?.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name_english}
+                  {p.name_marathi ? ` / ${p.name_marathi}` : ''}
+                  {p.status !== 'active' ? ` (${p.status})` : ''}
+                </option>
+              ))}
+            </select>
+
+            {activeProject && (
+              <button
+                type="button"
+                onClick={() => setActiveProjectMutation.mutate(null)}
+                disabled={setActiveProjectMutation.isPending}
+                className="btn-secondary text-sm whitespace-nowrap"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {activeProject ? (
+            <div className="mt-3 p-3 bg-primary-50 border border-primary-200 rounded-lg">
+              <p className="text-sm text-primary-900">
+                <CheckCircle className="inline h-4 w-4 mr-1" />
+                Active: <span className="font-semibold">{activeProject.name_english}</span>
+                {activeProject.name_marathi && (
+                  <span className="text-primary-700"> / {activeProject.name_marathi}</span>
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-gray-500">
+              No active project set. Tasks you create will not be tagged to any project.
+            </p>
+          )}
+
+          {myProjects && myProjects.length === 0 && (
+            <p className="mt-3 text-xs text-orange-600">
+              Your team is not assigned to any project yet. Ask your admin to assign your team
+              to a project first.
+            </p>
+          )}
         </div>
 
         {/* Telegram Integration */}

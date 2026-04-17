@@ -14,6 +14,92 @@ export interface Team {
   deleted_at?: Date;
 }
 
+// Project types
+export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
+
+export interface Project {
+  project_id: string;
+  name_english: string;
+  name_marathi?: string;
+  description?: string;
+  location?: string;
+  status: ProjectStatus;
+  start_date?: Date;
+  end_date?: Date;
+  budget?: number;
+  project_manager_id?: string;
+  project_manager_name?: string;
+  contact_person_name?: string;
+  contact_person_phone?: string;
+  contact_person_email?: string;
+  created_by: string;
+  created_by_name?: string;
+  team_count?: number;
+  task_count?: number;
+  completed_task_count?: number;
+  progress_percent?: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at?: Date;
+}
+
+export interface ProjectCreateInput {
+  name_english: string;
+  name_marathi?: string;
+  description?: string;
+  location?: string;
+  status?: ProjectStatus;
+  start_date?: Date | string;
+  end_date?: Date | string;
+  budget?: number;
+  project_manager_id?: string;
+  contact_person_name?: string;
+  contact_person_phone?: string;
+  contact_person_email?: string;
+  team_ids?: string[];  // teams to assign on creation
+}
+
+export interface ProjectUpdateInput {
+  name_english?: string;
+  name_marathi?: string;
+  description?: string;
+  location?: string;
+  status?: ProjectStatus;
+  start_date?: Date | string | null;
+  end_date?: Date | string | null;
+  budget?: number | null;
+  project_manager_id?: string | null;
+  contact_person_name?: string | null;
+  contact_person_phone?: string | null;
+  contact_person_email?: string | null;
+}
+
+export interface ProjectTeamAssignment {
+  project_id: string;
+  team_id: string;
+  team_name?: string;
+  assigned_at: Date;
+  assigned_by?: string;
+}
+
+export interface ProjectDashboardStats {
+  project: Project;
+  teams: Array<{ team_id: string; name: string; member_count: number }>;
+  total_tasks: number;
+  pending_tasks: number;
+  in_progress_tasks: number;
+  completed_tasks: number;
+  cancelled_tasks: number;
+  overdue_tasks: number;
+  progress_percent: number;
+  per_team_breakdown: Array<{
+    team_id: string;
+    team_name: string;
+    task_count: number;
+    completed_count: number;
+  }>;
+}
+
 export interface TeamCreateInput {
   name: string;
   description?: string;
@@ -90,6 +176,8 @@ export interface TaskRegistry {
   registered_by_name?: string;
   assigned_to?: string;
   assigned_to_name?: string;
+  project_id?: string;
+  project_name?: string;
   registration_date: Date;
   registration_time: string;
   task_data: Record<string, unknown>;
@@ -116,6 +204,7 @@ export interface TaskCreateInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string;
+  project_id?: string | null;
 }
 
 export interface TaskUpdateInput {
@@ -124,6 +213,7 @@ export interface TaskUpdateInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string | null;
+  project_id?: string | null;
 }
 
 export interface TaskFilters {
@@ -133,6 +223,7 @@ export interface TaskFilters {
   registered_by?: string;
   assigned_to?: string;
   team_id?: string;
+  project_id?: string;
   date_from?: Date;
   date_to?: Date;
   search?: string;
@@ -205,6 +296,11 @@ export interface WhatsAppMessage {
   audio?: {
     id: string;
     mime_type: string;
+  };
+  interactive?: {
+    type: 'button_reply' | 'list_reply';
+    button_reply?: { id: string; title: string };
+    list_reply?: { id: string; title: string; description?: string };
   };
 }
 

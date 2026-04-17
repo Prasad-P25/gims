@@ -2,8 +2,9 @@ import { Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { reportService } from '../services/report.service';
+import type { ProjectReportFilters } from '../services/report.service';
 import { sendSuccess, sendNotFound, sendBadRequest } from '../utils/response';
-import { AuthenticatedRequest, ReportFilters, UserContext } from '../types';
+import { AuthenticatedRequest, ReportFilters, UserContext, TaskStatus } from '../types';
 
 export class ReportController {
   private getUserContext(req: AuthenticatedRequest): UserContext {
@@ -167,6 +168,45 @@ export class ReportController {
       fileName,
       downloadUrl: `/reports/download/${encodeURIComponent(fileName)}`,
     });
+  }
+
+  /**
+   * Generate project-scoped PDF report.
+   */
+  async generateProjectReport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    // Zod has already validated and coerced; date fields are Date|undefined here.
+    const q = req.query as unknown as {
+      project_id: string;
+      date_from?: Date;
+      date_to?: Date;
+      status?: TaskStatus;
+      category_id?: number;
+      include_task_details?: boolean;
+    };
+
+    const validDate = (d?: Date) => (d instanceof Date && !isNaN(d.getTime()) ? d : undefined);
+
+    const filters: ProjectReportFilters = {
+      project_id: q.project_id,
+      date_from: validDate(q.date_from),
+      date_to: validDate(q.date_to),
+      status: q.status,
+      category_id: q.category_id,
+      include_task_details: q.include_task_details ?? true,
+    };
+
+    const userContext = this.getUserContext(req);
+    const result = await reportService.generateProjectReport(filters, userContext);
+
+    if (!result) {
+      sendNotFound(res, 'Project not found or you do not have access to it');
+      return;
+    }
+
+    sendSuccess(res, {
+      fileName: result.fileName,
+      downloadUrl: `/reports/download/${encodeURIComponent(result.fileName)}`,
+    }, 'Project report generated successfully');
   }
 }
 

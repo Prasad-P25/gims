@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middlewares/auth.middleware';
 import { validateBody, validateQuery } from '../middlewares/validate.middleware';
-import { reportFiltersSchema } from '../utils/validators';
+import { reportFiltersSchema, projectReportFiltersSchema } from '../utils/validators';
 import { asyncHandler } from '../middlewares/error.middleware';
 import { reportController } from '../controllers/report.controller';
 import { AuthenticatedRequest } from '../types';
@@ -54,6 +54,13 @@ router.get(
     format: z.enum(['pdf', 'excel']).default('pdf'),
   })),
   asyncHandler((req, res) => reportController.generateMonthlyReport(req as AuthenticatedRequest, res))
+);
+
+// GET /api/reports/project - Generate project-scoped PDF report
+router.get(
+  '/project',
+  validateQuery(projectReportFiltersSchema),
+  asyncHandler((req, res) => reportController.generateProjectReport(req as AuthenticatedRequest, res))
 );
 
 export default router;

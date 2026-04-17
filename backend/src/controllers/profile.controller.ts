@@ -4,6 +4,7 @@ import { query } from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { AuthenticatedRequest } from '../types';
 import { logger } from '../utils/logger';
+import { projectService } from '../services/project.service';
 import crypto from 'crypto';
 
 export class ProfileController {
@@ -180,6 +181,125 @@ export class ProfileController {
         '2. Send the command shown above',
         '3. Your account will be linked automatically',
       ],
+    });
+  }
+
+  /**
+   * Get the user's active (sticky) project.
+   */
+  async getActiveProject(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const userId = req.user!.user_id;
+
+    const result = await query<{
+      active_project_id: string | null;
+      project_id: string | null;
+      name_english: string | null;
+      name_marathi: string | null;
+      status: string | null;
+    }>(
+      `SELECT u.active_project_id, p.project_id, p.name_english, p.name_marathi, p.status
+       FROM users u
+       LEFT JOIN projects p ON u.active_project_id = p.project_id AND p.deleted_at IS NULL
+       WHERE u.user_id = $1 AND u.deleted_at IS NULL`,
+      [userId]
+    );
+
+    if (!result.rows[0]) {
+      sendError(res, 'User not found', 404);
+      return;
+    }
+
+    const row = result.rows[0];
+
+    // If the project is gone (soft-deleted / FK set null), clear the sticky reference
+    if (row.active_project_id && !row.project_id) {
+      await query(`UPDATE users SET active_project_id = NULL WHERE user_id = $1`, [userId]);
+      sendSuccess(res, { active_project: null });
+      return;
+    }
+
+    if (!row.project_id) {
+      sendSuccess(res, { active_project: null });
+      return;
+    }
+
+    sendSuccess(res, {
+      active_project: {
+        project_id: row.project_id,
+        name_english: row.name_english,
+        name_marathi: row.name_marathi,
+        status: row.status,
+      },
+    });
+  }
+
+  /**
+   * Set the user's active (sticky) project.
+   * Body: { project_id: string | null }
+   * Validation: if project_id is provided, the user's team must be assigned to that project
+   *             (super_admin can set any project).
+   */
+  async setActiveProject(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const user = req.user!;
+    const { project_id } = req.body as { project_id: string | null };
+
+    if (project_id === null || project_id === undefined || project_id === '') {
+      // Clear active project
+      await query(`UPDATE users SET active_project_id = NULL, updated_at = NOW() WHERE user_id = $1`, [user.user_id]);
+      logger.info('Active project cleared', { userId: user.user_id });
+      sendSuccess(res, { active_project: null, message: 'Active project cleared' });
+      return;
+    }
+
+    // Validate UUID format
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRe.test(project_id)) {
+      sendError(res, 'Invalid project_id', 400);
+      return;
+    }
+
+    // Check project exists and user has access
+    if (user.role !== 'super_admin') {
+      if (!user.team_id) {
+        sendError(res, 'You do not belong to a team, cannot select a project', 400);
+        return;
+      }
+      const isTeamInProject = await projectService.isTeamInProject(project_id, user.team_id);
+      if (!isTeamInProject) {
+        sendError(res, 'Your team is not assigned to this project', 403);
+        return;
+      }
+    } else {
+      // super_admin: just ensure the project exists and is not deleted
+      const exists = await query(
+        `SELECT 1 FROM projects WHERE project_id = $1 AND deleted_at IS NULL`,
+        [project_id]
+      );
+      if (exists.rows.length === 0) {
+        sendError(res, 'Project not found', 404);
+        return;
+      }
+    }
+
+    await query(
+      `UPDATE users SET active_project_id = $1, updated_at = NOW() WHERE user_id = $2`,
+      [project_id, user.user_id]
+    );
+
+    const projectRow = await query<{
+      project_id: string;
+      name_english: string;
+      name_marathi: string | null;
+      status: string;
+    }>(
+      `SELECT project_id, name_english, name_marathi, status FROM projects WHERE project_id = $1`,
+      [project_id]
+    );
+
+    logger.info('Active project set', { userId: user.user_id, projectId: project_id });
+    sendSuccess(res, {
+      active_project: projectRow.rows[0] || null,
+      message: 'Active project updated',
     });
   }
 

@@ -10,6 +10,7 @@ import auditRoutes from './audit.routes';
 import notificationRoutes from './notification.routes';
 import teamStatsRoutes from './teamStats.routes';
 import profileRoutes from './profile.routes';
+import projectRoutes from './project.routes';
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use('/audit', auditRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/team-stats', teamStatsRoutes);
 router.use('/profile', profileRoutes);
+router.use('/projects', projectRoutes);
 
 export default router;

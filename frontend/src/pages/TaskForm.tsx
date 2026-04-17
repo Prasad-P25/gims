@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Save, Loader2, Mic, Paperclip, UserPlus } from 'lucide-react';
 import { tasksService } from '../services/tasks';
 import { dashboardService } from '../services/dashboard';
+import { projectsService } from '../services/projects';
+import { profileService } from '../services/profile';
 import { useAuth } from '../context/AuthContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 import FileUpload from '../components/FileUpload';
@@ -22,6 +24,7 @@ export default function TaskForm() {
     status: 'pending',
     priority: 'medium',
     assigned_to: '',
+    project_id: '',
     task_data: {
       title: '',
       description: '',
@@ -47,6 +50,19 @@ export default function TaskForm() {
     enabled: canAssign,
   });
 
+  // Fetch projects the user has access to
+  const { data: myProjects = [] } = useQuery({
+    queryKey: ['my-projects'],
+    queryFn: projectsService.mine,
+  });
+
+  // Fetch user's sticky active project (only when creating — editing uses the task's own project)
+  const { data: activeProjectInfo } = useQuery({
+    queryKey: ['active-project'],
+    queryFn: profileService.getActiveProject,
+    enabled: !isEditing,
+  });
+
   // Fetch existing task if editing
   const { data: existingTask, isLoading: taskLoading } = useQuery({
     queryKey: ['task', id],
@@ -70,6 +86,7 @@ export default function TaskForm() {
         status: existingTask.status,
         priority: existingTask.priority,
         assigned_to: existingTask.assigned_to || '',
+        project_id: existingTask.project_id || '',
         task_data: {
           title: taskData?.title || '',
           description: taskData?.description || '',
@@ -80,6 +97,14 @@ export default function TaskForm() {
       });
     }
   }, [existingTask]);
+
+  // Default new-task project to user's sticky active project (only if user hasn't picked one yet)
+  useEffect(() => {
+    if (isEditing) return;
+    const sticky = activeProjectInfo?.active_project?.project_id;
+    if (!sticky) return;
+    setFormData((prev) => (prev.project_id ? prev : { ...prev, project_id: sticky }));
+  }, [activeProjectInfo, isEditing]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -126,6 +151,13 @@ export default function TaskForm() {
     } else if (canAssign && !formData.assigned_to && isEditing) {
       // Clear assignment if empty when editing
       payload.assigned_to = null;
+    }
+
+    // Project: send selected id, or null on edit when cleared; omit on create when empty so backend cascades
+    if (formData.project_id) {
+      payload.project_id = formData.project_id;
+    } else if (isEditing) {
+      payload.project_id = null;
     }
 
     if (isEditing) {
@@ -273,6 +305,30 @@ export default function TaskForm() {
             ))}
           </select>
         </div>
+
+        {/* Project (optional) */}
+        {myProjects.length > 0 && (
+          <div>
+            <label className="label">Project (optional)</label>
+            <select
+              value={formData.project_id}
+              onChange={(e) => handleChange('project_id', e.target.value)}
+              className="input"
+            >
+              <option value="">-- No project --</option>
+              {myProjects.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name_english}
+                </option>
+              ))}
+            </select>
+            {!isEditing && activeProjectInfo?.active_project && (
+              <p className="text-xs text-gray-500 mt-1">
+                Defaulted to your active project: {activeProjectInfo.active_project.name_english}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Title */}
         <div>

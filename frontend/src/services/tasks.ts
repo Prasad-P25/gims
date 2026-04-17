@@ -14,6 +14,7 @@ export const tasksService = {
     if (filters.status) queryParams.append('status', filters.status);
     if (filters.priority) queryParams.append('priority', filters.priority);
     if (filters.assigned_to) queryParams.append('assigned_to', filters.assigned_to);
+    if (filters.project_id) queryParams.append('project_id', filters.project_id);
     if (filters.date_from) queryParams.append('date_from', filters.date_from);
     if (filters.date_to) queryParams.append('date_to', filters.date_to);
     if (filters.search) queryParams.append('search', filters.search);

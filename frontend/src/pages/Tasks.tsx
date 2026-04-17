@@ -17,6 +17,7 @@ import {
 import { tasksService } from '../services/tasks';
 import { teamStatsService } from '../services/teamStats';
 import { dashboardService } from '../services/dashboard';
+import { projectsService } from '../services/projects';
 import { useAuth } from '../context/AuthContext';
 import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel } from '../lib/utils';
 import type { Task } from '../types';
@@ -32,6 +33,7 @@ export default function Tasks() {
     priority: '',
     category_id: '',
     assigned_to: '',
+    project_id: '',
     search: '',
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -49,8 +51,15 @@ export default function Tasks() {
       priority: filters.priority || undefined,
       category_id: filters.category_id ? parseInt(filters.category_id) : undefined,
       assigned_to: filters.assigned_to || undefined,
+      project_id: filters.project_id || undefined,
       search: filters.search || undefined,
     } as any),
+  });
+
+  // Fetch projects the user has access to (for filter dropdown)
+  const { data: myProjects = [] } = useQuery({
+    queryKey: ['my-projects'],
+    queryFn: projectsService.mine,
   });
 
   // Fetch categories
@@ -115,7 +124,7 @@ export default function Tasks() {
   };
 
   const clearFilters = () => {
-    setFilters({ status: '', priority: '', category_id: '', assigned_to: '', search: '' });
+    setFilters({ status: '', priority: '', category_id: '', assigned_to: '', project_id: '', search: '' });
     setPage(1);
     setSelectedTasks([]);
   };
@@ -248,6 +257,25 @@ export default function Tasks() {
                 ))}
               </select>
             </div>
+
+            {/* Filter by Project */}
+            {myProjects.length > 0 && (
+              <div>
+                <label className="label">Project</label>
+                <select
+                  value={filters.project_id}
+                  onChange={(e) => handleFilterChange('project_id', e.target.value)}
+                  className="input"
+                >
+                  <option value="">All Projects</option>
+                  {myProjects.map((p) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.name_english}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Filter by Member - Admin only */}
             {isAdmin && assignableUsers.length > 0 && (
@@ -473,8 +501,13 @@ function TaskRow({
 
       {/* Task Info */}
       <td className="px-4 py-4">
-        <div className="text-sm font-medium text-gray-900">
-          {(task.task_data as any)?.title || 'Untitled Task'}
+        <div className="text-sm font-medium text-gray-900 flex items-center gap-2 flex-wrap">
+          <span>{(task.task_data as any)?.title || 'Untitled Task'}</span>
+          {task.project_name && (
+            <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {task.project_name}
+            </span>
+          )}
         </div>
         <div className="text-sm text-gray-500 truncate max-w-xs">
           {String((task.task_data as any)?.description || task.transcription || '-')}

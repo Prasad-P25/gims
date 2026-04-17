@@ -14,6 +14,8 @@ import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 import TeamDashboard from './pages/TeamDashboard';
 import Profile from './pages/Profile';
+import Projects from './pages/Projects';
+import ProjectDashboard from './pages/ProjectDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +44,8 @@ function App() {
               <Route path="reminders" element={<Reminders />} />
               <Route path="users" element={<Users />} />
               <Route path="teams" element={<Teams />} />
+              <Route path="projects" element={<Projects />} />
+              <Route path="projects/:id" element={<ProjectDashboard />} />
               <Route path="team-dashboard" element={<TeamDashboard />} />
               <Route path="audit" element={<AuditLog />} />
               <Route path="settings" element={<Settings />} />

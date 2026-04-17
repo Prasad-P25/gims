@@ -28,6 +28,18 @@ export interface TelegramLinkResponse {
   instructions: string[];
 }
 
+export interface ActiveProjectSummary {
+  project_id: string;
+  name_english: string;
+  name_marathi: string | null;
+  status: string;
+}
+
+export interface ActiveProjectResponse {
+  active_project: ActiveProjectSummary | null;
+  message?: string;
+}
+
 export const profileService = {
   async getProfile(): Promise<UserProfile> {
     const response = await api.get('/profile');
@@ -51,6 +63,16 @@ export const profileService = {
 
   async unlinkTelegram(): Promise<{ message: string }> {
     const response = await api.delete('/profile/telegram');
+    return response.data;
+  },
+
+  async getActiveProject(): Promise<ActiveProjectResponse> {
+    const response = await api.get('/profile/active-project');
+    return response.data;
+  },
+
+  async setActiveProject(projectId: string | null): Promise<ActiveProjectResponse> {
+    const response = await api.put('/profile/active-project', { project_id: projectId });
     return response.data;
   },
 };

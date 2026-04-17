@@ -10,6 +10,91 @@ export interface Team {
   created_at: string;
 }
 
+// Project types
+export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
+
+export interface Project {
+  project_id: string;
+  name_english: string;
+  name_marathi?: string;
+  description?: string;
+  location?: string;
+  status: ProjectStatus;
+  start_date?: string | null;
+  end_date?: string | null;
+  budget?: number | string | null;
+  project_manager_id?: string | null;
+  project_manager_name?: string | null;
+  contact_person_name?: string | null;
+  contact_person_phone?: string | null;
+  contact_person_email?: string | null;
+  created_by: string;
+  created_by_name?: string;
+  team_count?: number;
+  task_count?: number;
+  completed_task_count?: number;
+  progress_percent?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectCreateInput {
+  name_english: string;
+  name_marathi?: string;
+  description?: string;
+  location?: string;
+  status?: ProjectStatus;
+  start_date?: string | null;
+  end_date?: string | null;
+  budget?: number | null;
+  project_manager_id?: string;
+  contact_person_name?: string;
+  contact_person_phone?: string;
+  contact_person_email?: string;
+  team_ids?: string[];
+}
+
+export interface ProjectUpdateInput {
+  name_english?: string;
+  name_marathi?: string | null;
+  description?: string | null;
+  location?: string | null;
+  status?: ProjectStatus;
+  start_date?: string | null;
+  end_date?: string | null;
+  budget?: number | null;
+  project_manager_id?: string | null;
+  contact_person_name?: string | null;
+  contact_person_phone?: string | null;
+  contact_person_email?: string | null;
+}
+
+export interface ProjectTeamAssignment {
+  project_id: string;
+  team_id: string;
+  team_name?: string;
+  assigned_at: string;
+  assigned_by?: string;
+}
+
+export interface ProjectDashboardStats {
+  project: Project;
+  teams: Array<{ team_id: string; name: string; member_count: number }>;
+  total_tasks: number;
+  pending_tasks: number;
+  in_progress_tasks: number;
+  completed_tasks: number;
+  cancelled_tasks: number;
+  overdue_tasks: number;
+  progress_percent: number;
+  per_team_breakdown: Array<{
+    team_id: string;
+    team_name: string;
+    task_count: number;
+    completed_count: number;
+  }>;
+}
+
 // User types
 export type UserRole = 'super_admin' | 'admin' | 'member';
 
@@ -65,6 +150,7 @@ export interface Task {
   category_id: number;
   registered_by: string;
   assigned_to?: string;
+  project_id?: string | null;
   registration_date: string;
   registration_time: string;
   task_data: Record<string, unknown>;
@@ -82,6 +168,7 @@ export interface Task {
   category_name_marathi?: string;
   registered_by_name?: string;
   assigned_to_name?: string;
+  project_name?: string | null;
 }
 
 export interface AssignableUser {
@@ -98,6 +185,7 @@ export interface TaskCreateInput {
   input_language?: string;
   priority?: TaskPriority;
   assigned_to?: string;
+  project_id?: string | null;
 }
 
 export interface TaskUpdateInput {
@@ -106,6 +194,7 @@ export interface TaskUpdateInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string | null;
+  project_id?: string | null;
 }
 
 export interface TaskFilters {
@@ -113,6 +202,7 @@ export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigned_to?: string;
+  project_id?: string;
   date_from?: string;
   date_to?: string;
   search?: string;

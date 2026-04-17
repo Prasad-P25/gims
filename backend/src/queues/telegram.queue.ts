@@ -8,6 +8,7 @@ import { query } from '../config/database';
 import { telegramService, TelegramMessage, TelegramCallbackQuery } from '../services/telegram.service';
 import { geminiService } from '../services/gemini.service';
 import { taskService } from '../services/task.service';
+import { projectService } from '../services/project.service';
 import { notificationService } from '../services/notification.service';
 import { triggerNotification } from './notification.queue';
 
@@ -70,6 +71,35 @@ async function linkTelegramToUser(telegramId: number, phone: string): Promise<{ 
 
 // Temp storage for assign flow (maps chatId to selected taskId)
 const assignPendingTask = new Map<number, string>();
+
+// If a newly created task has an ambiguous project resolution, send an inline-button
+// follow-up so the user can pick a project. Registry ID is stashed in Redis (TTL 10m)
+// so the callback_data can stay short (projpick:<project_id>, within the 64-byte limit).
+async function maybePromptProjectPick(
+  chatId: number,
+  registryId: string,
+  resolution?: { reason?: string; candidates?: Array<{ project_id: string; name_english: string; name_marathi?: string | null }> }
+): Promise<void> {
+  if (!resolution || resolution.reason !== 'ambiguous') return;
+  const candidates = resolution.candidates || [];
+  if (candidates.length === 0) return;
+
+  await redis.set(`telegram:proj_pick:${chatId}`, registryId, 'EX', 600);
+
+  const buttons: Array<{ text: string; callback_data: string }[]> = candidates.map((c) => [
+    {
+      text: (c.name_marathi || c.name_english).slice(0, 50),
+      callback_data: `projpick:${c.project_id}`,
+    },
+  ]);
+  buttons.push([{ text: '🚫 Skip (no project)', callback_data: 'projpick:none' }]);
+
+  await telegramService.sendMessageWithButtons(
+    chatId,
+    `📁 <b>Which project is this task for?</b>\n\nहे कार्य कोणत्या प्रकल्पासाठी आहे?\n\nYour team is part of multiple projects. Pick one and I'll remember it for future tasks.`,
+    buttons
+  );
+}
 
 interface TelegramMessageJobData {
   message?: TelegramMessage;
@@ -490,6 +520,136 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
     return;
   }
 
+  // Handle active-project selection from /project menu
+  if (data.startsWith('setproj:')) {
+    const target = data.slice('setproj:'.length); // uuid or "none"
+    const userRow = await query<{ team_id: string | null; role: string }>(
+      'SELECT team_id, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+    const teamId = userRow.rows[0]?.team_id;
+    const role = userRow.rows[0]?.role;
+
+    if (target === 'none') {
+      await query('UPDATE users SET active_project_id = NULL, updated_at = NOW() WHERE user_id = $1', [userId]);
+      await telegramService.sendMessage(
+        chatId,
+        `✅ <b>Active project cleared.</b>\n\nसक्रिय प्रकल्प रद्द केला.\n\nNew tasks will not be auto-tagged to any project.`
+      );
+      return;
+    }
+
+    // Validate access for non-super_admin: their team must be in the project
+    if (role !== 'super_admin') {
+      if (!teamId) {
+        await telegramService.sendMessage(chatId, '❌ You are not part of a team that can be assigned to projects.');
+        return;
+      }
+      const allowed = await projectService.isTeamInProject(target, teamId);
+      if (!allowed) {
+        await telegramService.sendMessage(chatId, '❌ Your team is not assigned to that project.');
+        return;
+      }
+    }
+
+    // Fetch project name for confirmation
+    const projRow = await query<{ name_english: string; name_marathi: string | null }>(
+      'SELECT name_english, name_marathi FROM projects WHERE project_id = $1 AND deleted_at IS NULL',
+      [target]
+    );
+    if (projRow.rows.length === 0) {
+      await telegramService.sendMessage(chatId, '❌ That project no longer exists.');
+      return;
+    }
+
+    await query('UPDATE users SET active_project_id = $1, updated_at = NOW() WHERE user_id = $2', [target, userId]);
+    const pname = projRow.rows[0].name_marathi || projRow.rows[0].name_english;
+    await telegramService.sendMessage(
+      chatId,
+      `✅ <b>Active project set:</b> ${pname}\n\nसक्रिय प्रकल्प सेट केला.\n\nNew tasks you register will auto-tag to this project until you change it with /project.`
+    );
+    return;
+  }
+
+  // Handle ambiguous-case project pick after a task was just created
+  if (data.startsWith('projpick:')) {
+    const target = data.slice('projpick:'.length); // uuid or "none"
+    const pickKey = `telegram:proj_pick:${chatId}`;
+    const registryId = await redis.get(pickKey);
+
+    if (!registryId) {
+      await telegramService.sendMessage(
+        chatId,
+        `⌛ <b>That prompt expired.</b>\n\nUse /project to set your active project, then new tasks will auto-tag.`
+      );
+      return;
+    }
+
+    if (target === 'none') {
+      await redis.del(pickKey);
+      await telegramService.sendMessage(
+        chatId,
+        `👍 Task saved without a project.\n\nकार्य प्रकल्पाशिवाय जतन केले.`
+      );
+      return;
+    }
+
+    // Check task is still valid to update (exists, not deleted, project still NULL)
+    const taskRow = await query<{ project_id: string | null }>(
+      `SELECT project_id FROM task_registry
+       WHERE registry_id = $1 AND deleted_at IS NULL
+         AND (registered_by = $2 OR assigned_to = $2)`,
+      [registryId, userId]
+    );
+    if (taskRow.rows.length === 0) {
+      await redis.del(pickKey);
+      await telegramService.sendMessage(chatId, '❌ That task is no longer available.');
+      return;
+    }
+    if (taskRow.rows[0].project_id) {
+      await redis.del(pickKey);
+      await telegramService.sendMessage(chatId, 'ℹ️ That task already has a project set.');
+      return;
+    }
+
+    // Validate project access (same rule as setproj: team must be in project unless super_admin)
+    const pickUserRow = await query<{ team_id: string | null; role: string }>(
+      'SELECT team_id, role FROM users WHERE user_id = $1',
+      [userId]
+    );
+    const pTeamId = pickUserRow.rows[0]?.team_id;
+    const pRole = pickUserRow.rows[0]?.role;
+    if (pRole !== 'super_admin') {
+      if (!pTeamId || !(await projectService.isTeamInProject(target, pTeamId))) {
+        await redis.del(pickKey);
+        await telegramService.sendMessage(chatId, '❌ You do not have access to that project.');
+        return;
+      }
+    }
+
+    const projNameRow = await query<{ name_english: string; name_marathi: string | null }>(
+      'SELECT name_english, name_marathi FROM projects WHERE project_id = $1 AND deleted_at IS NULL',
+      [target]
+    );
+    if (projNameRow.rows.length === 0) {
+      await redis.del(pickKey);
+      await telegramService.sendMessage(chatId, '❌ That project no longer exists.');
+      return;
+    }
+
+    // Update task AND set sticky so next time no prompt
+    await query('UPDATE task_registry SET project_id = $1, updated_at = NOW() WHERE registry_id = $2', [target, registryId]);
+    await query('UPDATE users SET active_project_id = $1, updated_at = NOW() WHERE user_id = $2', [target, userId]);
+    await redis.del(pickKey);
+
+    const pname = projNameRow.rows[0].name_marathi || projNameRow.rows[0].name_english;
+    await telegramService.sendMessage(
+      chatId,
+      `✅ <b>Tagged to:</b> ${pname}\n\nकार्य प्रकल्पाशी जोडले.\n\nI'll auto-tag future tasks to this project until you change it with /project.`
+    );
+    return;
+  }
+
   // Handle category selection
   if (data.startsWith('category_')) {
     const categoryId = parseInt(data.replace('category_', ''), 10);
@@ -536,6 +696,7 @@ async function processCallbackQuery(callbackQuery: TelegramCallbackQuery): Promi
       summary: taskTitle,
       date: new Date().toLocaleDateString('en-IN'),
     });
+    await maybePromptProjectPick(chatId, task.registry_id, task._projectResolution);
   }
 }
 
@@ -621,6 +782,7 @@ You can:
       date: new Date().toLocaleDateString('en-IN'),
       dueDate: extracted.task_data.due_date as string | undefined,
     });
+    await maybePromptProjectPick(chatId, task.registry_id, task._projectResolution);
   } else if (extracted.confidence > 0.4) {
     // Low confidence - store original text for when user picks a category
     await redis.set(`telegram:pending_text:${chatId}`, text, 'EX', 3600);
@@ -763,6 +925,7 @@ async function processVoiceMessage(message: TelegramMessage): Promise<void> {
         date: new Date().toLocaleDateString('en-IN'),
         dueDate: extracted.task_data.due_date as string | undefined,
       });
+      await maybePromptProjectPick(chatId, task.registry_id, task._projectResolution);
     } else if (extracted.confidence > 0.3) {
       // Partial understanding - show transcription and ask for category
       await telegramService.sendMessage(
@@ -810,6 +973,7 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 /today - Show today's tasks
 /pending - Show all pending tasks
 /menu - Show category menu
+/project - Set your active project (auto-tags new tasks)
 /summary - Daily task summary (admin only)
 /testreminder - Test a reminder now (super admin)
 
@@ -1126,6 +1290,77 @@ async function handleCommand(message: TelegramMessage): Promise<void> {
 
       assignButtons.push([{ text: '❌ Cancel', callback_data: 'cancel_assign' }]);
       await telegramService.sendMessageWithButtons(chatId, assignMsg, assignButtons);
+      break;
+
+    case '/project':
+      // Show inline buttons to pick sticky active project
+      const projUserId = await getUserIdByTelegramId(message.from.id);
+      if (!projUserId) {
+        await telegramService.sendMessage(
+          chatId,
+          `❌ <b>Account not linked</b>\n\nUse <code>/link YOUR_PHONE</code> to link your account.`
+        );
+        break;
+      }
+
+      const projUserRow = await query<{ team_id: string | null; role: string; active_project_id: string | null }>(
+        'SELECT team_id, role, active_project_id FROM users WHERE user_id = $1',
+        [projUserId]
+      );
+      const projUser = projUserRow.rows[0];
+
+      // Get projects visible to this user
+      let availableProjects: Array<{ project_id: string; name_english: string; name_marathi?: string | null }> = [];
+      if (projUser?.role === 'super_admin') {
+        const all = await projectService.listProjects(
+          { user_id: projUserId, role: 'super_admin' },
+          'active'
+        );
+        availableProjects = all.map((p) => ({
+          project_id: p.project_id,
+          name_english: p.name_english,
+          name_marathi: p.name_marathi,
+        }));
+      } else if (projUser?.team_id) {
+        const mine = await projectService.getMyProjects(projUser.team_id);
+        availableProjects = mine
+          .filter((p) => p.status === 'active' || p.status === 'on_hold')
+          .map((p) => ({
+            project_id: p.project_id,
+            name_english: p.name_english,
+            name_marathi: p.name_marathi,
+          }));
+      }
+
+      if (availableProjects.length === 0) {
+        await telegramService.sendMessage(
+          chatId,
+          `📁 <b>No projects available</b>\n\nतुमच्यासाठी कोणतेही प्रकल्प उपलब्ध नाहीत.\n\nAsk your admin to add your team to a project.`
+        );
+        break;
+      }
+
+      // Fetch current active name (if any) for display
+      let currentActiveLine = '';
+      if (projUser?.active_project_id) {
+        const cur = availableProjects.find((p) => p.project_id === projUser.active_project_id);
+        if (cur) {
+          currentActiveLine = `\n\n<b>Current:</b> ${cur.name_marathi || cur.name_english}`;
+        }
+      }
+
+      const projectButtons: Array<{ text: string; callback_data: string }[]> = availableProjects.map((p) => {
+        const isActive = p.project_id === projUser?.active_project_id;
+        const label = `${isActive ? '✓ ' : ''}${p.name_marathi || p.name_english}`;
+        return [{ text: label.slice(0, 50), callback_data: `setproj:${p.project_id}` }];
+      });
+      projectButtons.push([{ text: '🚫 None (clear)', callback_data: 'setproj:none' }]);
+
+      await telegramService.sendMessageWithButtons(
+        chatId,
+        `📁 <b>Set active project</b>\n\nसक्रिय प्रकल्प निवडा\n\nNew tasks you register will auto-tag to the selected project.${currentActiveLine}`,
+        projectButtons
+      );
       break;
 
     case '/summary':

@@ -12,14 +12,120 @@ import {
   UserContext,
 } from '../types';
 
+export interface ProjectResolution {
+  project_id: string | null;
+  reason: 'explicit' | 'sticky' | 'single_team_project' | 'none' | 'ambiguous';
+  /** Candidate project IDs when reason === 'ambiguous' (for Telegram/WhatsApp follow-up prompt). */
+  candidates?: Array<{ project_id: string; name_english: string; name_marathi?: string | null }>;
+}
+
 export class TaskService {
   /**
-   * Create a new task registry entry
+   * Resolve the project_id for a new task using cascading rules:
+   *   1. Explicit project_id in the request (validate team access)
+   *   2. User's active_project_id (validate team access)
+   *   3. If user's team is in exactly one project — use it
+   *   4. Else null (with candidates list if 2+ projects — caller can prompt)
+   *
+   * Returns both the resolved project_id and the reason, so the caller (Telegram/WhatsApp)
+   * can decide whether to send a follow-up "Which project?" prompt.
+   */
+  async resolveProjectForUser(
+    userId: string,
+    requestedProjectId?: string | null
+  ): Promise<ProjectResolution> {
+    // Load user + team info once
+    const userResult = await query<{
+      user_id: string;
+      team_id: string | null;
+      active_project_id: string | null;
+      role: string;
+    }>(
+      `SELECT user_id, team_id, active_project_id, role
+       FROM users
+       WHERE user_id = $1 AND deleted_at IS NULL`,
+      [userId]
+    );
+    const user = userResult.rows[0];
+    if (!user) {
+      return { project_id: null, reason: 'none' };
+    }
+
+    // Helper — is the user's team (if any) in this project?
+    const teamInProject = async (projectId: string): Promise<boolean> => {
+      if (user.role === 'super_admin') {
+        // super_admin can pick any active project
+        const r = await query(
+          `SELECT 1 FROM projects WHERE project_id = $1 AND deleted_at IS NULL`,
+          [projectId]
+        );
+        return r.rows.length > 0;
+      }
+      if (!user.team_id) return false;
+      const r = await query(
+        `SELECT 1 FROM project_teams pt
+         JOIN projects p ON p.project_id = pt.project_id
+         WHERE pt.project_id = $1 AND pt.team_id = $2 AND p.deleted_at IS NULL`,
+        [projectId, user.team_id]
+      );
+      return r.rows.length > 0;
+    };
+
+    // 1. Explicit wins — but validate
+    if (requestedProjectId) {
+      if (await teamInProject(requestedProjectId)) {
+        return { project_id: requestedProjectId, reason: 'explicit' };
+      }
+      logger.warn('Task creation: explicit project_id rejected (no access)', {
+        userId,
+        requestedProjectId,
+      });
+      // fall through to sticky / auto logic instead of failing hard
+    }
+
+    // 2. Sticky (active_project_id) — if user still has access
+    if (user.active_project_id && (await teamInProject(user.active_project_id))) {
+      return { project_id: user.active_project_id, reason: 'sticky' };
+    }
+
+    // 3. If user's team is in exactly one project — auto-assign
+    if (user.team_id) {
+      const r = await query<{ project_id: string; name_english: string; name_marathi: string | null }>(
+        `SELECT p.project_id, p.name_english, p.name_marathi
+         FROM project_teams pt
+         JOIN projects p ON p.project_id = pt.project_id
+         WHERE pt.team_id = $1 AND p.deleted_at IS NULL AND p.status != 'archived'
+         ORDER BY p.name_english`,
+        [user.team_id]
+      );
+      if (r.rows.length === 1) {
+        return { project_id: r.rows[0].project_id, reason: 'single_team_project' };
+      }
+      if (r.rows.length >= 2) {
+        // Ambiguous — caller can prompt
+        return {
+          project_id: null,
+          reason: 'ambiguous',
+          candidates: r.rows.map((row) => ({
+            project_id: row.project_id,
+            name_english: row.name_english,
+            name_marathi: row.name_marathi,
+          })),
+        };
+      }
+    }
+
+    return { project_id: null, reason: 'none' };
+  }
+
+  /**
+   * Create a new task registry entry.
+   * Resolves project_id via cascading rules (explicit → sticky → team-has-one → null).
    */
   async createTask(
     input: TaskCreateInput,
     userId: string
-  ): Promise<TaskRegistry> {
+  ): Promise<TaskRegistry & { _projectResolution?: ProjectResolution }> {
     // Auto-assign to team admin if no assignee specified
     let assignedTo = input.assigned_to || null;
     if (!assignedTo) {
@@ -35,11 +141,17 @@ export class TaskService {
       }
     }
 
+    // Cascading project resolution (explicit passed via input.project_id if provided)
+    const resolution = await this.resolveProjectForUser(
+      userId,
+      input.project_id === null ? undefined : input.project_id
+    );
+
     const sql = `
       INSERT INTO task_registry (
-        category_id, registered_by, assigned_to, task_data, input_mode, input_source,
+        category_id, registered_by, assigned_to, project_id, task_data, input_mode, input_source,
         input_language, original_input, transcription, priority, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `;
 
@@ -47,6 +159,7 @@ export class TaskService {
       input.category_id,
       userId,
       assignedTo,
+      resolution.project_id,
       JSON.stringify(input.task_data),
       input.input_mode,
       input.input_source || 'web',
@@ -58,8 +171,15 @@ export class TaskService {
     ];
 
     const result = await query<TaskRegistry>(sql, values);
-    logger.info('Task created', { registryId: result.rows[0].registry_id, userId, assignedTo: input.assigned_to });
-    return result.rows[0];
+    const row = result.rows[0];
+    logger.info('Task created', {
+      registryId: row.registry_id,
+      userId,
+      assignedTo,
+      projectId: resolution.project_id,
+      projectResolution: resolution.reason,
+    });
+    return { ...row, _projectResolution: resolution };
   }
 
   /**
@@ -83,9 +203,11 @@ export class TaskService {
         tr.*,
         c.name_english as category_name_english,
         c.name_marathi as category_name_marathi,
-        c.field_template
+        c.field_template,
+        p.name_english as project_name
       FROM task_registry tr
       JOIN categories c ON tr.category_id = c.category_id
+      LEFT JOIN projects p ON tr.project_id = p.project_id
       WHERE tr.registry_id = $1 AND tr.deleted_at IS NULL
     `;
     const result = await query(sql, [registryId]);
@@ -167,6 +289,11 @@ export class TaskService {
       values.push(filters.assigned_to);
     }
 
+    if (filters.project_id) {
+      conditions.push(`tr.project_id = $${paramIndex++}`);
+      values.push(filters.project_id);
+    }
+
     if (filters.team_id) {
       conditions.push(`tr.registered_by IN (
         SELECT user_id FROM users WHERE team_id = $${paramIndex++} AND deleted_at IS NULL
@@ -217,11 +344,13 @@ export class TaskService {
         c.name_english as category_name_english,
         c.name_marathi as category_name_marathi,
         u.name as registered_by_name,
-        ua.name as assigned_to_name
+        ua.name as assigned_to_name,
+        p.name_english as project_name
       FROM task_registry tr
       JOIN categories c ON tr.category_id = c.category_id
       LEFT JOIN users u ON tr.registered_by = u.user_id
       LEFT JOIN users ua ON tr.assigned_to = ua.user_id
+      LEFT JOIN projects p ON tr.project_id = p.project_id
       WHERE ${whereClause}
       ORDER BY tr.${safeSortBy} ${safeSortOrder}
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -276,6 +405,11 @@ export class TaskService {
     if (input.assigned_to !== undefined) {
       updates.push(`assigned_to = $${paramIndex++}`);
       values.push(input.assigned_to);
+    }
+
+    if (input.project_id !== undefined) {
+      updates.push(`project_id = $${paramIndex++}`);
+      values.push(input.project_id);
     }
 
     if (updates.length === 0) {

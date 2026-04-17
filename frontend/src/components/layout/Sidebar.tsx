@@ -10,6 +10,7 @@ import {
   LogOut,
   BarChart3,
   UserCircle,
+  FolderKanban,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -17,6 +18,7 @@ import { cn } from '../../lib/utils';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Tasks', href: '/tasks', icon: ClipboardList },
+  { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Reports', href: '/reports', icon: FileText },
 ];
 

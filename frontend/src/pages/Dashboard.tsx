@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   ClipboardList,
   Clock,
@@ -7,6 +8,7 @@ import {
   TrendingUp,
   Calendar,
   Folder,
+  FolderKanban,
   Mic,
   MessageSquare,
   Users,
@@ -25,9 +27,11 @@ import {
   Legend,
 } from 'recharts';
 import { dashboardService } from '../services/dashboard';
+import { projectsService } from '../services/projects';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { cn, formatDate, getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel } from '../lib/utils';
+import type { Project, ProjectStatus } from '../types';
 
 interface StatCardProps {
   title: string;
@@ -94,6 +98,13 @@ export default function Dashboard() {
       const response = await api.get('/teams');
       return response.data;
     },
+    enabled: user?.role === 'super_admin',
+  });
+
+  // Fetch projects overview for super_admin
+  const { data: allProjects } = useQuery<Project[]>({
+    queryKey: ['dashboard', 'projects-overview'],
+    queryFn: () => projectsService.list(),
     enabled: user?.role === 'super_admin',
   });
 
@@ -180,6 +191,11 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Projects Overview for Super Admin */}
+      {user?.role === 'super_admin' && allProjects && (
+        <ProjectsOverviewCard projects={allProjects} />
       )}
 
       {/* Charts Row */}
@@ -422,6 +438,126 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const PROJECT_STATUS_TONE: Record<ProjectStatus, string> = {
+  active: 'bg-green-50 text-green-700 border-green-200',
+  on_hold: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  archived: 'bg-gray-50 text-gray-600 border-gray-200',
+};
+
+const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
+  active: 'Active',
+  on_hold: 'On Hold',
+  completed: 'Completed',
+  archived: 'Archived',
+};
+
+function ProjectsOverviewCard({ projects }: { projects: Project[] }) {
+  const byStatus: Record<ProjectStatus, number> = {
+    active: 0,
+    on_hold: 0,
+    completed: 0,
+    archived: 0,
+  };
+  let totalTasks = 0;
+  let totalCompleted = 0;
+
+  for (const p of projects) {
+    byStatus[p.status] = (byStatus[p.status] || 0) + 1;
+    totalTasks += Number(p.task_count || 0);
+    totalCompleted += Number(p.completed_task_count || 0);
+  }
+
+  const overallProgress = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
+
+  const topProjects = [...projects]
+    .sort((a, b) => Number(b.task_count || 0) - Number(a.task_count || 0))
+    .slice(0, 5);
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+          <FolderKanban className="h-5 w-5 mr-2 text-indigo-600" />
+          Projects Overview
+        </h2>
+        <Link to="/projects" className="text-sm text-primary-600 hover:text-primary-700">
+          Manage projects →
+        </Link>
+      </div>
+
+      {projects.length === 0 ? (
+        <p className="text-sm text-gray-500">No projects yet.</p>
+      ) : (
+        <>
+          {/* Status counts */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {(Object.keys(byStatus) as ProjectStatus[]).map((s) => (
+              <div key={s} className={cn('rounded-lg p-3 border', PROJECT_STATUS_TONE[s])}>
+                <div className="text-2xl font-bold">{byStatus[s]}</div>
+                <div className="text-xs uppercase tracking-wide mt-1">{PROJECT_STATUS_LABEL[s]}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Overall progress bar */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="font-medium text-gray-700">Overall task progress</span>
+              <span className="text-gray-500">{overallProgress}% ({totalCompleted} / {totalTasks} tasks)</span>
+            </div>
+            <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-500 transition-all"
+                style={{ width: `${overallProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Top projects by task volume */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Top projects by task volume</h3>
+            {topProjects.filter((p) => Number(p.task_count || 0) > 0).length === 0 ? (
+              <p className="text-xs text-gray-500">No tasks attached to any project yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {topProjects.map((p) => {
+                  const count = Number(p.task_count || 0);
+                  const completed = Number(p.completed_task_count || 0);
+                  const pct = count > 0 ? Math.round((completed / count) * 100) : 0;
+                  return (
+                    <li key={p.project_id}>
+                      <Link
+                        to={`/projects/${p.project_id}`}
+                        className="flex items-center justify-between py-1.5 hover:bg-gray-50 rounded px-2 -mx-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 truncate">{p.name_english}</span>
+                            <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded border', PROJECT_STATUS_TONE[p.status])}>
+                              {PROJECT_STATUS_LABEL[p.status]}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="flex-1 max-w-xs bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{completed}/{count}</span>
+                          </div>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
