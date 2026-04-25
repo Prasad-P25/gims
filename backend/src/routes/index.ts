@@ -10,6 +10,7 @@ import auditRoutes from './audit.routes';
 import notificationRoutes from './notification.routes';
 import teamStatsRoutes from './teamStats.routes';
 import profileRoutes from './profile.routes';
+import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -35,6 +36,6 @@ router.use('/teams', teamRoutes);
 router.use('/audit', auditRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/team-stats', teamStatsRoutes);
-router.use('/profile', profileRoutes);
+router.use('/profile', authenticate, profileRoutes);
 
 export default router;
