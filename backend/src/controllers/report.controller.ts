@@ -25,6 +25,7 @@ export class ReportController {
       date_from: new Date(req.body.date_from),
       date_to: new Date(req.body.date_to),
       category_ids: req.body.category_ids,
+      status: req.body.status || undefined,
       include_summary: req.body.include_summary ?? true,
     };
 

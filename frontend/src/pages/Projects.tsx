@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Phone,
   Mail,
+  Hash,
   LayoutDashboard,
 } from 'lucide-react';
 import { projectsService } from '../services/projects';
@@ -42,6 +43,7 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 const emptyForm: ProjectCreateInput = {
   name_english: '',
   name_marathi: '',
+  po_number: '',
   description: '',
   location: '',
   status: 'active',
@@ -145,6 +147,7 @@ export default function Projects() {
     setForm({
       name_english: p.name_english,
       name_marathi: p.name_marathi || '',
+      po_number: p.po_number || '',
       description: p.description || '',
       location: p.location || '',
       status: p.status,
@@ -173,7 +176,7 @@ export default function Projects() {
       payload.budget = Number(payload.budget);
     }
     if (!payload.project_manager_id) delete payload.project_manager_id;
-    ['name_marathi', 'description', 'location', 'contact_person_name', 'contact_person_phone', 'contact_person_email']
+    ['po_number', 'description', 'location', 'contact_person_name', 'contact_person_phone', 'contact_person_email']
       .forEach((k) => {
         if (payload[k] === '') payload[k] = editing ? null : undefined;
       });
@@ -254,9 +257,9 @@ export default function Projects() {
             {editing ? 'Edit Project' : 'Create New Project'}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="label">Name (English) *</label>
+                <label className="label">Project Code *</label>
                 <input
                   type="text"
                   value={form.name_english}
@@ -267,11 +270,22 @@ export default function Projects() {
                 />
               </div>
               <div>
-                <label className="label">Name (Marathi)</label>
+                <label className="label">Client Name *</label>
                 <input
                   type="text"
                   value={form.name_marathi || ''}
                   onChange={(e) => setForm({ ...form, name_marathi: e.target.value })}
+                  className="input"
+                  required
+                  minLength={1}
+                />
+              </div>
+              <div>
+                <label className="label">PO Number</label>
+                <input
+                  type="text"
+                  value={form.po_number || ''}
+                  onChange={(e) => setForm({ ...form, po_number: e.target.value })}
                   className="input"
                 />
               </div>
@@ -552,6 +566,12 @@ export default function Projects() {
 
               {/* Meta info */}
               <div className="space-y-1 text-xs text-gray-600 mb-3">
+                {p.po_number && (
+                  <div className="flex items-center">
+                    <Hash className="h-3.5 w-3.5 mr-1.5 text-gray-400" />
+                    PO: {p.po_number}
+                  </div>
+                )}
                 {p.location && (
                   <div className="flex items-center">
                     <MapPin className="h-3.5 w-3.5 mr-1.5 text-gray-400" />

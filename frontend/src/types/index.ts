@@ -15,8 +15,9 @@ export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
 
 export interface Project {
   project_id: string;
-  name_english: string;
-  name_marathi?: string;
+  name_english: string; // UI label: "Project Code"
+  name_marathi?: string; // UI label: "Client Name"
+  po_number?: string | null;
   description?: string;
   location?: string;
   status: ProjectStatus;
@@ -39,8 +40,9 @@ export interface Project {
 }
 
 export interface ProjectCreateInput {
-  name_english: string;
-  name_marathi?: string;
+  name_english: string; // "Project Code"
+  name_marathi: string; // "Client Name" (required)
+  po_number?: string;
   description?: string;
   location?: string;
   status?: ProjectStatus;
@@ -57,6 +59,7 @@ export interface ProjectCreateInput {
 export interface ProjectUpdateInput {
   name_english?: string;
   name_marathi?: string | null;
+  po_number?: string | null;
   description?: string | null;
   location?: string | null;
   status?: ProjectStatus;

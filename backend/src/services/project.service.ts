@@ -50,17 +50,18 @@ export class ProjectService {
 
       const insertSql = `
         INSERT INTO projects (
-          name_english, name_marathi, description, location, status,
+          name_english, name_marathi, po_number, description, location, status,
           start_date, end_date, budget, project_manager_id,
           contact_person_name, contact_person_phone, contact_person_email,
           created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `;
       const values = [
         input.name_english,
         input.name_marathi || null,
+        input.po_number || null,
         input.description || null,
         input.location || null,
         input.status || 'active',
@@ -189,6 +190,7 @@ export class ProjectService {
     const fieldMap: Array<[keyof ProjectUpdateInput, string]> = [
       ['name_english', 'name_english'],
       ['name_marathi', 'name_marathi'],
+      ['po_number', 'po_number'],
       ['description', 'description'],
       ['location', 'location'],
       ['status', 'status'],

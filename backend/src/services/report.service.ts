@@ -85,35 +85,43 @@ export class ReportService {
    * Fetch data for the report
    */
   private async fetchReportData(filters: ReportFilters, userContext?: UserContext): Promise<ReportData> {
-    // 1. Current date range: ALL tasks (pending, in_progress, completed, cancelled)
+    // 1. Current date range: tasks within the selected window (optionally filtered by status)
     const { tasks: currentTasks } = await taskService.getTasks(
       {
         date_from: filters.date_from,
         date_to: filters.date_to,
         category_id: filters.category_ids?.[0],
+        status: filters.status,
       },
       { page: 1, limit: 10000 },
       userContext
     );
 
-    // 2. Previous months: only PENDING & IN_PROGRESS tasks (unfinished work that needs tracking)
-    const { tasks: olderTasks } = await taskService.getTasks(
-      {
-        date_to: new Date(filters.date_from.getTime() - 1), // Everything before selected date range
-        category_id: filters.category_ids?.[0],
-      },
-      { page: 1, limit: 10000 },
-      userContext
-    );
+    let allTasks: TaskRegistry[];
 
-    const carryOverTasks = olderTasks.filter(
-      (t) => t.status === 'pending' || t.status === 'in_progress'
-    );
+    if (filters.status) {
+      // Explicit status filter: report exactly that status, no carry-over of unfinished work
+      allTasks = currentTasks;
+    } else {
+      // 2. Previous months: only PENDING & IN_PROGRESS tasks (unfinished work that needs tracking)
+      const { tasks: olderTasks } = await taskService.getTasks(
+        {
+          date_to: new Date(filters.date_from.getTime() - 1), // Everything before selected date range
+          category_id: filters.category_ids?.[0],
+        },
+        { page: 1, limit: 10000 },
+        userContext
+      );
 
-    // Merge: carry-over (older pending) first, then current month tasks
-    const existingIds = new Set(currentTasks.map((t) => t.registry_id));
-    const uniqueCarryOver = carryOverTasks.filter((t) => !existingIds.has(t.registry_id));
-    const allTasks = [...uniqueCarryOver, ...currentTasks];
+      const carryOverTasks = olderTasks.filter(
+        (t) => t.status === 'pending' || t.status === 'in_progress'
+      );
+
+      // Merge: carry-over (older pending) first, then current month tasks
+      const existingIds = new Set(currentTasks.map((t) => t.registry_id));
+      const uniqueCarryOver = carryOverTasks.filter((t) => !existingIds.has(t.registry_id));
+      allTasks = [...uniqueCarryOver, ...currentTasks];
+    }
 
     // Stats reflect everything in the report
     const stats = this.calculateStats(allTasks);

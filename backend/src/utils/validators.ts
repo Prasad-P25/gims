@@ -36,8 +36,9 @@ const optionalStr = (max: number) =>
   z.string().max(max).optional().nullable().or(z.literal('')).transform((v) => (v === '' ? undefined : v));
 
 export const projectCreateSchema = z.object({
-  name_english: z.string().min(2, 'Project name must be at least 2 characters').max(200),
-  name_marathi: z.string().max(200).optional(),
+  name_english: z.string().min(2, 'Project code must be at least 2 characters').max(200),
+  name_marathi: z.string().min(1, 'Client name is required').max(200),
+  po_number: z.string().max(100).optional(),
   description: z.string().max(5000).optional(),
   location: z.string().max(300).optional(),
   status: projectStatusEnum.default('active'),
@@ -56,7 +57,8 @@ export const projectCreateSchema = z.object({
 
 export const projectUpdateSchema = z.object({
   name_english: z.string().min(2).max(200).optional(),
-  name_marathi: optionalStr(200),
+  name_marathi: z.string().min(1, 'Client name is required').max(200).optional(),
+  po_number: optionalStr(100),
   description: optionalStr(5000),
   location: optionalStr(300),
   status: projectStatusEnum.optional(),

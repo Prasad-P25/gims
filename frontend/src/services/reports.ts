@@ -15,6 +15,7 @@ export const reportsService = {
       date_from: params.start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
       date_to: params.end_date || new Date().toISOString(),
       category_ids: params.category_id ? [parseInt(params.category_id)] : undefined,
+      status: params.status || undefined,
       include_summary: true,
     });
 
