@@ -356,6 +356,9 @@ export default function Tasks() {
                       Start Date
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                      End Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                       Date
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -616,6 +619,14 @@ function TaskRow({
         <div className="flex items-center text-sm text-gray-500">
           <Calendar className="h-4 w-4 mr-1" />
           {task.task_data?.start_date ? formatDate(String(task.task_data.start_date)) : '—'}
+        </div>
+      </td>
+
+      {/* End Date */}
+      <td className="px-4 py-4 hidden lg:table-cell">
+        <div className="flex items-center text-sm text-gray-500">
+          <Calendar className="h-4 w-4 mr-1" />
+          {task.task_data?.due_date ? formatDate(String(task.task_data.due_date)) : '—'}
         </div>
       </td>
 
