@@ -162,6 +162,10 @@ export const reportFiltersSchema = z.object({
   date_from: z.coerce.date(),
   date_to: z.coerce.date(),
   category_ids: z.array(z.coerce.number().int().positive()).optional(),
+  status: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional()
+  ),
   include_summary: z.coerce.boolean().default(true),
 });
 
