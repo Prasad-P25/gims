@@ -30,6 +30,7 @@ export default function TaskForm() {
       description: '',
       applicant_name: '',
       applicant_phone: '',
+      start_date: '',
       due_date: '',
     },
   });
@@ -92,6 +93,7 @@ export default function TaskForm() {
           description: taskData?.description || '',
           applicant_name: taskData?.applicant_name || '',
           applicant_phone: taskData?.applicant_phone || '',
+          start_date: taskData?.start_date || '',
           due_date: taskData?.due_date || '',
         },
       });
@@ -204,6 +206,7 @@ export default function TaskForm() {
         description: data.extracted.task_data.description || data.extracted.summary || prev.task_data.description,
         applicant_name: data.extracted.task_data.applicant_name || prev.task_data.applicant_name,
         applicant_phone: data.extracted.task_data.applicant_phone || prev.task_data.applicant_phone,
+        start_date: data.extracted.task_data.start_date || prev.task_data.start_date,
         due_date: data.extracted.task_data.due_date || prev.task_data.due_date,
       },
     }));
@@ -444,15 +447,26 @@ export default function TaskForm() {
           </div>
         </div>
 
-        {/* Due Date */}
-        <div>
-          <label className="label">Due Date</label>
-          <input
-            type="date"
-            value={formData.task_data.due_date}
-            onChange={(e) => handleChange('task_data.due_date', e.target.value)}
-            className="input"
-          />
+        {/* Start / End Dates */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Start Date</label>
+            <input
+              type="date"
+              value={formData.task_data.start_date}
+              onChange={(e) => handleChange('task_data.start_date', e.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label">End Date</label>
+            <input
+              type="date"
+              value={formData.task_data.due_date}
+              onChange={(e) => handleChange('task_data.due_date', e.target.value)}
+              className="input"
+            />
+          </div>
         </div>
 
         {/* Attachments Section - Only show when editing */}

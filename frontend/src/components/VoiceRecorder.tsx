@@ -18,6 +18,7 @@ interface VoiceRecorderProps {
         location?: string;
         applicant_name?: string;
         applicant_phone?: string;
+        start_date?: string;
         due_date?: string;
       };
       priority: 'high' | 'medium' | 'low';
