@@ -5,16 +5,24 @@ import { AuthenticatedRequest } from '../types';
 
 export class TeamController {
   /**
-   * Get all teams (super_admin only)
+   * Get teams. super_admin sees all teams; admin sees only their own team.
    */
   async getAllTeams(req: AuthenticatedRequest, res: Response): Promise<void> {
-    if (req.user?.role !== 'super_admin') {
-      sendError(res, 'Access denied', 403);
+    const user = req.user!;
+
+    if (user.role === 'super_admin') {
+      const teams = await teamService.getAllTeams();
+      sendSuccess(res, teams);
       return;
     }
 
-    const teams = await teamService.getAllTeams();
-    sendSuccess(res, teams);
+    if (user.role === 'admin') {
+      const ownTeam = await teamService.getTeamByAdminId(user.user_id);
+      sendSuccess(res, ownTeam ? [ownTeam] : []);
+      return;
+    }
+
+    sendError(res, 'Access denied', 403);
   }
 
   /**

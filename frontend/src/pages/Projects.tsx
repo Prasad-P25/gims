@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -207,6 +207,17 @@ export default function Projects() {
       assignTeamsMutation.mutate({ id: editing.project_id, teamIds: [teamId] });
     }
   };
+
+  // For admins creating a project, auto-select their own team (the only one returned).
+  useEffect(() => {
+    if (showForm && !editing && user?.role === 'admin' && teams && teams.length > 0) {
+      setForm((prev) =>
+        prev.team_ids && prev.team_ids.length > 0
+          ? prev
+          : { ...prev, team_ids: teams.map((t) => t.team_id) }
+      );
+    }
+  }, [showForm, editing, user?.role, teams]);
 
   const assignedTeamIds = useMemo(
     () => new Set((assignedTeams || []).map((t) => t.team_id)),
